@@ -1,0 +1,35 @@
+name = "frontend"
+version = "1.0.0"
+
+# Fill out these fields if you intend to generate HTML documentation or publish
+# your project to the Hex package manager.
+#
+# description = ""
+# licences = ["Apache-2.0"]
+# repository = { type = "github", user = "", repo = "" }
+# links = [{ title = "Website", href = "" }]
+#
+# For a full reference of all the available options, you can have a look at
+# https://gleam.run/writing-gleam/gleam-toml/.
+
+target = "javascript"
+
+[tools.lustre.dev]
+host = "0.0.0.0"
+
+[tools.lustre.build]
+no_html = true
+no_tailwind = true
+minify = true
+outdir = "../backend/priv/static"
+
+[dependencies]
+gleam_stdlib = ">= 1.0.0 and < 2.0.0"
+lustre = ">= 5.7.1 and < 6.0.0"
+gleam_json = ">= 3.1.0 and < 4.0.0"
+shared = { path = "../shared" }
+gleam_time = ">= 1.8.0 and < 2.0.0"
+
+[dev_dependencies]
+gleeunit = ">= 1.0.0 and < 2.0.0"
+lustre_dev_tools = ">= 2.3.6 and < 3.0.0"

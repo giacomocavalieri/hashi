@@ -1,0 +1,10 @@
+**/*.beam
+**/*.ez
+**/build
+**/erl_crash.dump
+
+**/.lustre
+**/dist
+
+backend/priv/static/hashi.js
+backend/priv/puzzles
