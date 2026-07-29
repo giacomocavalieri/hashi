@@ -40,7 +40,7 @@ pub fn main() {
     router.handle_request(_, context)
     |> wisp_mist.handler(secret_key_base)
     |> mist.new
-    |> mist.port(8000)
+    |> mist.port(1236)
     |> mist.supervised
 
   let assert Ok(_) =
