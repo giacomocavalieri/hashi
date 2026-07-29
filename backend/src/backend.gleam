@@ -89,6 +89,11 @@ fn generate_puzzle(
   let puzzle_path =
     filepath.join(puzzle_folder, daily_puzzle.file_name(for: today))
 
+  // We turn today's date into a seed so that the puzzle for each day is unique!
+  // The seed is the number YYYYMMDD.
+  let seed =
+    today.year * 1000 + calendar.month_to_int(today.month) * 100 + today.day
+
   let puzzle = case simplifile.read_bits(puzzle_path) {
     // We start by checking if a file for the puzzle already exists.
     // That can happen in two cases:
@@ -101,13 +106,16 @@ fn generate_puzzle(
     // Either way we generate it from those existing options!
     Ok(file_content) -> {
       let assert Ok(options) = daily_puzzle.parse_options(file_content)
+      let options = hashi.with_seed(options, seed)
       hashi.generate(options)
     }
 
     // On the other hand, if no puzzle file exists we just generate one from
     // scratch using a default set of parameters and save the file ourselves.
     Error(_) -> {
-      let options = daily_puzzle.default_options(for: today)
+      let options =
+        daily_puzzle.default_options(for: today)
+        |> hashi.with_seed(seed)
       let puzzle = hashi.generate(options)
 
       let assert Ok(_) =

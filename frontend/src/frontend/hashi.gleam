@@ -597,7 +597,10 @@ fn share_outcome(model: Model) -> Effect(Message) {
   let title = "🏝️ Hashi - " <> pretty_date(model.puzzle_day)
   do_share(
     title:,
-    message: title <> "\nSolved in " <> elapsed <> "\nplay-hashi.com",
+    message: title
+      <> "\nSolved in "
+      <> elapsed
+      <> "\nPlay at hashi.giacomocavalieri.me",
     on_share: fn(copied_to_clipboard) {
       case copied_to_clipboard {
         True -> dispatch(UserSharedOutcome(Clipboard))
