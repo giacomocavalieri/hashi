@@ -913,7 +913,7 @@ pub fn decoder() -> Decoder(Puzzle) {
       width:,
       height:,
       islands: set.from_list(islands),
-      connections: dict.from_list(connections),
+      connections:,
       bridge_cells: set.new(),
     )
     |> redraw_bridges
@@ -939,7 +939,7 @@ pub fn connections_to_json(
 }
 
 pub fn connections_decoder() -> Decoder(
-  List(#(#(Int, Int), Dict(#(Int, Int), Bridge))),
+  Dict(#(Int, Int), Dict(#(Int, Int), Bridge)),
 ) {
   decode.list({
     use start <- decode.field(0, island_decoder())
@@ -953,6 +953,7 @@ pub fn connections_decoder() -> Decoder(
     )
     decode.success(#(start, dict.from_list(connections)))
   })
+  |> decode.map(dict.from_list)
 }
 
 fn bridge_to_json(bridge: Bridge) -> Json {

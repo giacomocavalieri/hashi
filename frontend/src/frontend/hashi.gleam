@@ -20,6 +20,7 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/element/svg
 import lustre/event
+import rsvp
 import shared/hashi.{type Bridge, type InvalidSolution, type Puzzle}
 import shared/schedule
 
@@ -29,7 +30,7 @@ pub fn main() {
   // The app expects the puzzle data to be in a `<script>` with id "#app-data",
   // it will read it and parse it to a puzzle.
   // If it's wrong I've really messed up something, so I just crash.
-  let assert Ok(#(puzzle_day, puzzle)) =
+  let assert Ok(#(puzzle_day, puzzle, server_url)) =
     read_app_json_data("app-data")
     |> json.parse(daily_puzzle_decoder())
 
@@ -39,6 +40,7 @@ pub fn main() {
       if saved_puzzle_day == puzzle_day
     ->
       InitState(
+        server_url:,
         puzzle_day:,
         puzzle:,
         connections:,
@@ -48,6 +50,7 @@ pub fn main() {
 
     Ok(_) | Error(_) ->
       InitState(
+        server_url:,
         puzzle_day:,
         puzzle:,
         connections: dict.new(),
@@ -72,6 +75,9 @@ fn load_saved_state() -> Result(SaveState, Nil) {
 
 pub type Model {
   Model(
+    /// Who we should send the outcome to once we're done
+    server_url: String,
+    /// The day of the puzzle we're solving.
     puzzle_day: Date,
     /// The puzzle we're currently trying to solve.
     puzzle: Puzzle,
@@ -122,6 +128,7 @@ pub fn init(state: InitState) -> #(Model, Effect(Message)) {
 
 pub fn init_model(state: InitState) -> Model {
   let InitState(
+    server_url: server_url,
     puzzle:,
     puzzle_day:,
     connections:,
@@ -130,6 +137,7 @@ pub fn init_model(state: InitState) -> Model {
   ) = state
   let outcome = hashi.check(puzzle, connections)
   Model(
+    server_url:,
     puzzle_day:,
     cursor: #(0, 0),
     puzzle:,
@@ -153,7 +161,7 @@ fn connect_islands(
   one: #(Int, Int),
   other: #(Int, Int),
   bridge: Bridge,
-) -> Model {
+) -> #(Model, Effect(Message)) {
   let solution = history.current(model.solutions)
   let connections =
     solution.connections
@@ -162,7 +170,14 @@ fn connect_islands(
   let outcome = hashi.check(model.puzzle, connections)
   let bridges = add_bridge_cells(solution.bridges, one, other)
   let new_solution = Solution(outcome:, connections:, bridges:)
-  Model(..model, solutions: history.push(model.solutions, new_solution))
+  let model =
+    Model(..model, solutions: history.push(model.solutions, new_solution))
+  let effect = case is_complete(model) {
+    True -> send_outcome_to_server(model)
+    False -> effect.none()
+  }
+
+  #(model, effect)
 }
 
 fn add_bridge_cells(
@@ -190,7 +205,7 @@ fn disconnect_islands(
   model: Model,
   one: #(Int, Int),
   other: #(Int, Int),
-) -> Model {
+) -> #(Model, Effect(Message)) {
   let #(x, y) = one
   let #(other_x, other_y) = other
 
@@ -212,7 +227,14 @@ fn disconnect_islands(
     _ -> solution.bridges
   }
   let new_solution = Solution(outcome:, connections:, bridges:)
-  Model(..model, solutions: history.push(model.solutions, new_solution))
+  let model =
+    Model(..model, solutions: history.push(model.solutions, new_solution))
+  let effect = case is_complete(model) {
+    True -> send_outcome_to_server(model)
+    False -> effect.none()
+  }
+
+  #(model, effect)
 }
 
 /// If a bridge can be drawn between two points, this returns the next bridge
@@ -289,6 +311,7 @@ fn is_complete(model: Model) -> Bool {
 
 pub type InitState {
   InitState(
+    server_url: String,
     puzzle_day: Date,
     puzzle: Puzzle,
     connections: Dict(#(Int, Int), Dict(#(Int, Int), Bridge)),
@@ -297,17 +320,19 @@ pub type InitState {
   )
 }
 
-pub fn daily_puzzle_to_json(day: Date, puzzle: Puzzle) -> Json {
+pub fn daily_puzzle_to_json(day: Date, puzzle: Puzzle, server: String) -> Json {
   json.object([
     #("puzzle_day", date_to_json(day)),
     #("puzzle", hashi.to_json(puzzle)),
+    #("server", json.string(server)),
   ])
 }
 
-pub fn daily_puzzle_decoder() -> Decoder(#(Date, Puzzle)) {
+pub fn daily_puzzle_decoder() -> Decoder(#(Date, Puzzle, String)) {
   use date <- decode.field("puzzle_day", date_decoder())
   use puzzle <- decode.field("puzzle", hashi.decoder())
-  decode.success(#(date, puzzle))
+  use server <- decode.field("server", decode.string)
+  decode.success(#(date, puzzle, server))
 }
 
 fn date_to_json(day: Date) -> Json {
@@ -374,7 +399,6 @@ fn save_state_decoder() -> Decoder(SaveState) {
   use puzzle_day <- decode.field("puzzle_day", date_decoder())
   use elapsed_time <- decode.field("elapsed_time", duration_decoder())
   use connections <- decode.field("connections", hashi.connections_decoder())
-  let connections = dict.from_list(connections)
   decode.success(SaveState(puzzle_day:, elapsed_time:, connections:))
 }
 
@@ -392,6 +416,33 @@ fn duration_decoder() -> Decoder(Duration) {
   duration.seconds(seconds)
   |> duration.add(duration.nanoseconds(nanoseconds))
   |> decode.success
+}
+
+// OUTCOME ---------------------------------------------------------------------
+// Whever the puzzle is completed we send the outcome to the server, this is
+// a representation of the data sent to the server.
+
+pub type Outcome {
+  Outcome(
+    /// The day of the puzzle that has been solved.
+    day: Date,
+    /// How many seconds it took to solve the puzzle.
+    seconds: Int,
+  )
+}
+
+fn outcome_to_json(outcome: Outcome) -> Json {
+  let Outcome(day:, seconds:) = outcome
+  json.object([
+    #("day", date_to_json(day)),
+    #("seconds", json.int(seconds)),
+  ])
+}
+
+pub fn outcome_decoder() -> Decoder(Outcome) {
+  use day <- decode.field("day", date_decoder())
+  use seconds <- decode.field("seconds", decode.int)
+  decode.success(Outcome(day:, seconds:))
 }
 
 // UPDATE ----------------------------------------------------------------------
@@ -420,14 +471,21 @@ pub type Message {
   UserClickedShare
   UserSharedOutcome(medium: ShareMedium)
   ShareTimerExpired
+
+  RsvpPostedOutcome
 }
 
 fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
   case message {
+    RsvpPostedOutcome -> {
+      let effect = effect.none()
+      #(model, effect)
+    }
+
     UserClickedBridge(between: one, and: other) -> {
       use <- skip_if_complete(model)
-      let model = disconnect_islands(model, one, other)
-      let effect = save_state(model)
+      let #(model, effect) = disconnect_islands(model, one, other)
+      let effect = effect.batch([effect, save_state(model)])
       #(model, effect)
     }
 
@@ -450,13 +508,13 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
         Some(start), Some(end) ->
           case can_connect(model, start, end) {
             Ok(bridge) -> {
-              let model = case bridge {
+              let #(model, effect) = case bridge {
                 Some(bridge) -> connect_islands(model, start, end, bridge)
                 None -> disconnect_islands(model, start, end)
               }
               let model =
                 Model(..model, start_island: None, target_island: None)
-              let effect = save_state(model)
+              let effect = effect.batch([effect, save_state(model)])
               #(model, effect)
             }
             Error(_) -> {
@@ -613,7 +671,8 @@ fn share_outcome(model: Model) -> Effect(Message) {
     message: title
       <> "\nSolved in "
       <> elapsed
-      <> "\nPlay at hashi.giacomocavalieri.me",
+      <> "\nPlay at "
+      <> model.server_url,
     on_share: fn(copied_to_clipboard) {
       case copied_to_clipboard {
         True -> dispatch(UserSharedOutcome(Clipboard))
@@ -654,6 +713,22 @@ fn write_local_storage(key: String, value: String) -> Nil
 
 @external(javascript, "./hashi_ffi.mjs", "read_local_storage")
 fn read_local_storage(key: String) -> String
+
+fn send_outcome_to_server(model: Model) -> Effect(Message) {
+  let outcome =
+    Outcome(
+      day: model.puzzle_day,
+      seconds: model.elapsed_time
+        |> duration.to_seconds
+        |> float.round,
+    )
+
+  rsvp.post(
+    model.server_url,
+    outcome_to_json(outcome),
+    rsvp.expect_ok_response(fn(_reply) { RsvpPostedOutcome }),
+  )
+}
 
 // VIEW ------------------------------------------------------------------------
 

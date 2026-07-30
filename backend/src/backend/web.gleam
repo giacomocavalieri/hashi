@@ -6,6 +6,7 @@ pub type Context {
     cache: daily_puzzle.Cache,
     puzzles_folder: String,
     static_assets_folder: String,
+    server_url: String,
   )
 }
 
@@ -15,6 +16,7 @@ pub fn middleware(
   handle_request: fn(wisp.Request) -> wisp.Response,
 ) -> wisp.Response {
   let req = wisp.method_override(req)
+  let req = wisp.set_max_body_size(req, 100)
   use <- wisp.log_request(req)
   use <- wisp.rescue_crashes
   use req <- wisp.handle_head(req)

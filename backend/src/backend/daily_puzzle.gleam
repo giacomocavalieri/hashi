@@ -1,5 +1,7 @@
 import gleam/erlang/reference.{type Reference}
+import gleam/float
 import gleam/int
+import gleam/result
 import gleam/string
 import gleam/time/calendar.{type Date}
 import shared/calendar_extra.{
@@ -57,19 +59,18 @@ pub fn default_options(for today: Date) -> hashi.Options {
 
 /// Given the content of a daily puzzle file, this returns the options used to
 /// generate such puzzle.
-pub fn parse_options(file_content: BitArray) -> Result(hashi.Options, Nil) {
-  case file_content {
-    <<
-      width:8-unsigned,
-      height:8-unsigned,
-      islands:8-unsigned,
-      double_bridge_ratio:64-float,
-      0:8,
-      _:bits,
-    >> ->
+pub fn parse_options(file_content: String) -> Result(hashi.Options, Nil) {
+  case string.split(file_content, on: "\n") {
+    [width, height, islands, double_bridge_ratio, _times] -> {
+      use width <- result.try(int.parse(width))
+      use height <- result.try(int.parse(height))
+      use islands <- result.try(int.parse(islands))
+      use double_bridge_ratio <- result.try(float.parse(double_bridge_ratio))
+
       hashi.new(width:, height:, islands:)
       |> hashi.with_double_bridge_ratio(double_bridge_ratio)
       |> Ok
+    }
 
     _ -> Error(Nil)
   }
@@ -77,17 +78,18 @@ pub fn parse_options(file_content: BitArray) -> Result(hashi.Options, Nil) {
 
 /// Given the options used to generate a daily puzzle, this turns them into a
 /// binary that can be written to the puzzle's file.
-pub fn serialise_options(options: hashi.Options) -> BitArray {
+pub fn serialise_options(options: hashi.Options) -> String {
   let hashi.Options(double_bridge_ratio:, width:, height:, islands:, seed: _) =
     options
 
-  <<
-    width:8,
-    height:8,
-    islands:8,
-    double_bridge_ratio:64-float,
-    0:8,
-  >>
+  [
+    int.to_string(width),
+    int.to_string(height),
+    int.to_string(islands),
+    float.to_string(double_bridge_ratio),
+  ]
+  |> string.join("\n")
+  |> string.append("\n")
 }
 
 // CACHING THE DAILY PUZZLE ----------------------------------------------------

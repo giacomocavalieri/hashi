@@ -1,14 +1,17 @@
 import backend/daily_puzzle
 import backend/router
-import backend/web
+import backend/web.{type Context}
+import envoy
 import filepath
 import frontend/hashi as hashi_frontend_app
 import gleam/dict
 import gleam/erlang/process
+import gleam/int
 import gleam/json
 import gleam/otp/actor
 import gleam/otp/static_supervisor
 import gleam/otp/supervision
+import gleam/result
 import gleam/time/calendar.{type Date}
 import gleam/time/duration
 import gleam/time/timestamp
@@ -26,6 +29,12 @@ pub fn main() {
   wisp.configure_logger()
   let secret_key_base = wisp.random_string(64)
 
+  let assert Ok(server_url) = envoy.get("SERVER_URL")
+  let assert Ok(port) = envoy.get("PORT") |> result.try(int.parse)
+
+  wisp.log_info("🏝️ Starting the Hashi service")
+  wisp.log_info("We will point outcome solutions to " <> server_url)
+
   let assert Ok(priv_folder) = wisp.priv_directory("backend")
   let puzzles_folder = filepath.join(priv_folder, "puzzles")
   let static_assets_folder = filepath.join(priv_folder, "static")
@@ -34,13 +43,14 @@ pub fn main() {
       cache: daily_puzzle.new_cache(),
       puzzles_folder:,
       static_assets_folder:,
+      server_url:,
     )
 
   let server_spec =
     router.handle_request(_, context)
     |> wisp_mist.handler(secret_key_base)
     |> mist.new
-    |> mist.port(1236)
+    |> mist.port(port)
     |> mist.supervised
 
   let assert Ok(_) =
@@ -52,11 +62,7 @@ pub fn main() {
   process.sleep_forever()
 }
 
-fn daily_generator_spec(context: web.Context) {
-  // We use the Italian offset so it's the most comfortable to me :)
-  // We will generate the puzzle at 8:00 in the morning.
-  let web.Context(cache:, puzzles_folder:, ..) = context
-
+fn daily_generator_spec(context: Context) {
   use <- supervision.worker
   actor.new_with_initialiser(100, fn(me) {
     process.send(me, Nil)
@@ -65,7 +71,7 @@ fn daily_generator_spec(context: web.Context) {
   |> actor.on_message(fn(me, _msg) {
     // First we get today's date and generate a puzzle.
     let today = schedule.today()
-    generate_puzzle(today, puzzles_folder, cache)
+    generate_puzzle(today, context)
 
     // Then we figure out how long we have to sleep before waking up again.
     // We want to generate the puzzle at a fixed time of the next day!
@@ -79,20 +85,16 @@ fn daily_generator_spec(context: web.Context) {
   |> actor.start
 }
 
-fn generate_puzzle(
-  today: Date,
-  puzzle_folder: String,
-  cache: daily_puzzle.Cache,
-) -> Nil {
+fn generate_puzzle(today: Date, context: Context) -> Nil {
   let puzzle_path =
-    filepath.join(puzzle_folder, daily_puzzle.file_name(for: today))
+    filepath.join(context.puzzles_folder, daily_puzzle.file_name(for: today))
 
   // We turn today's date into a seed so that the puzzle for each day is unique!
   // The seed is the number YYYYMMDD.
   let seed =
     today.year * 1000 + calendar.month_to_int(today.month) * 100 + today.day
 
-  let puzzle = case simplifile.read_bits(puzzle_path) {
+  let puzzle = case simplifile.read(puzzle_path) {
     // We start by checking if a file for the puzzle already exists.
     // That can happen in two cases:
     //   1. the puzzle for today had already been generated, for some reason I
@@ -118,7 +120,7 @@ fn generate_puzzle(
 
       let assert Ok(_) =
         daily_puzzle.serialise_options(options)
-        |> simplifile.write_bits(to: puzzle_path)
+        |> simplifile.write(to: puzzle_path)
 
       puzzle
     }
@@ -127,12 +129,16 @@ fn generate_puzzle(
   // Finally, after generating the puzzle, we prerender the page we'll be
   // serving and save that in the cache. So from now on all requests to the
   // server will serve this new page!
-  let page = puzzle_to_page(today, puzzle)
-  daily_puzzle.replace_cached(cache, page)
+  let page = puzzle_to_page(today, puzzle, context.server_url)
+  daily_puzzle.replace_cached(context.cache, page)
   Nil
 }
 
-fn puzzle_to_page(puzzle_day: Date, puzzle: hashi.Puzzle) -> String {
+fn puzzle_to_page(
+  puzzle_day: Date,
+  puzzle: hashi.Puzzle,
+  server_url: String,
+) -> String {
   // We create an initial dummy state to prerender the grid so that we don't see
   // the page flashing as the lustre app starts.
   let initial_state =
@@ -142,6 +148,7 @@ fn puzzle_to_page(puzzle_day: Date, puzzle: hashi.Puzzle) -> String {
       current_time: timestamp.system_time(),
       puzzle_day:,
       puzzle:,
+      server_url:,
     ))
 
   html.html([attribute.lang("en")], [
@@ -165,7 +172,7 @@ fn puzzle_to_page(puzzle_day: Date, puzzle: hashi.Puzzle) -> String {
       ]),
       html.script(
         [attribute.type_("application/hashi"), attribute.id("app-data")],
-        hashi_frontend_app.daily_puzzle_to_json(puzzle_day, puzzle)
+        hashi_frontend_app.daily_puzzle_to_json(puzzle_day, puzzle, server_url)
           |> json.to_string,
       ),
       // The lustre app bundled with the runtime that will take over the page
