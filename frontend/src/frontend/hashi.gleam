@@ -215,13 +215,15 @@ fn disconnect_islands(
   Model(..model, solutions: history.push(model.solutions, new_solution))
 }
 
-/// If the two points can be connected, this will return the kind of bridge to
-/// use to connect the two islands.
+/// If a bridge can be drawn between two points, this returns the next bridge
+/// we'll have to insert between the two points if it is actually drawn.
+/// If the bridge is `Ok(None)` that means that drawing a bridge will delete
+/// all the bridges.
 fn can_connect(
   model: Model,
   point: #(Int, Int),
   to selected: #(Int, Int),
-) -> Result(Bridge, Nil) {
+) -> Result(Option(Bridge), Nil) {
   // The islands must be orthogonal
   let #(x, y) = selected
   let #(other_x, other_y) = point
@@ -236,8 +238,8 @@ fn can_connect(
   }
 
   case bridge {
-    Ok(hashi.Double) -> Error(Nil)
-    Ok(hashi.Single) -> Ok(hashi.Double)
+    Ok(hashi.Double) -> Ok(None)
+    Ok(hashi.Single) -> Ok(Some(hashi.Double))
     Error(_) ->
       case Nil {
         _ if x == other_x -> {
@@ -251,7 +253,7 @@ fn can_connect(
             })
 
           case can_connect {
-            True -> Ok(hashi.Single)
+            True -> Ok(Some(hashi.Single))
             False -> Error(Nil)
           }
         }
@@ -265,7 +267,7 @@ fn can_connect(
             })
 
           case can_connect {
-            True -> Ok(hashi.Single)
+            True -> Ok(Some(hashi.Single))
             False -> Error(Nil)
           }
         }
@@ -448,7 +450,10 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
         Some(start), Some(end) ->
           case can_connect(model, start, end) {
             Ok(bridge) -> {
-              let model = connect_islands(model, start, end, bridge)
+              let model = case bridge {
+                Some(bridge) -> connect_islands(model, start, end, bridge)
+                None -> disconnect_islands(model, start, end)
+              }
               let model =
                 Model(..model, start_island: None, target_island: None)
               let effect = save_state(model)
