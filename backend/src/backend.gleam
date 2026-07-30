@@ -5,6 +5,7 @@ import envoy
 import filepath
 import frontend/hashi as hashi_frontend_app
 import gleam/dict
+import gleam/erlang/atom
 import gleam/erlang/process
 import gleam/int
 import gleam/json
@@ -26,9 +27,38 @@ import wisp
 import wisp/wisp_mist
 
 pub fn main() {
+  process.sleep_forever()
+}
+
+/// The Erlang/OTP application start callback.
+/// Responsible to start the "top" supervisor process and return its Pid
+/// to the application controller.
+pub fn start(
+  _app: atom.Atom,
+  _arguments,
+) -> Result(process.Pid, actor.StartError) {
+  case static_supervisor.start(supervised()) {
+    Error(reason) -> Error(reason)
+    Ok(actor.Started(pid, _data)) -> {
+      let _ = process.register(pid, process.new_name("hashi_server"))
+      Ok(pid)
+    }
+  }
+}
+
+/// The Erlang/OTP application stop callback.
+/// This is called after all processes in the supervisor tree have
+/// been shutdown by the application controller. Responsible for any
+/// final clean up actions.
+pub fn stop(_state: a) -> atom.Atom {
+  atom.create("ok")
+}
+
+fn supervised() -> static_supervisor.Builder {
   wisp.configure_logger()
   let secret_key_base = wisp.random_string(64)
 
+  let assert Ok(puzzles_folder) = envoy.get("PUZZLES_FOLDER")
   let assert Ok(server_url) = envoy.get("SERVER_URL")
   let assert Ok(port) = envoy.get("PORT") |> result.try(int.parse)
 
@@ -36,7 +66,6 @@ pub fn main() {
   wisp.log_info("We will point outcome solutions to " <> server_url)
 
   let assert Ok(priv_folder) = wisp.priv_directory("backend")
-  let puzzles_folder = filepath.join(priv_folder, "puzzles")
   let static_assets_folder = filepath.join(priv_folder, "static")
   let context =
     web.Context(
@@ -53,13 +82,9 @@ pub fn main() {
     |> mist.port(port)
     |> mist.supervised
 
-  let assert Ok(_) =
-    static_supervisor.new(static_supervisor.OneForOne)
-    |> static_supervisor.add(daily_generator_spec(context))
-    |> static_supervisor.add(server_spec)
-    |> static_supervisor.start
-
-  process.sleep_forever()
+  static_supervisor.new(static_supervisor.OneForOne)
+  |> static_supervisor.add(daily_generator_spec(context))
+  |> static_supervisor.add(server_spec)
 }
 
 fn daily_generator_spec(context: Context) {
