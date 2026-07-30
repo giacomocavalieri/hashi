@@ -1,11 +1,11 @@
-import backend/calendar_extra.{
-  Friday, Monday, Saturday, Sunday, Thursday, Tuesday, Wednesday,
-}
 import gleam/erlang/reference.{type Reference}
 import gleam/int
 import gleam/string
 import gleam/time/calendar.{type Date}
-import hashi
+import shared/calendar_extra.{
+  Friday, Monday, Saturday, Sunday, Thursday, Tuesday, Wednesday,
+}
+import shared/hashi
 
 /// Returns the file name to be used to store data about a puzzle for the given
 /// day.
@@ -36,22 +36,22 @@ pub fn default_options(for today: Date) -> hashi.Options {
       |> hashi.with_double_bridge_ratio(0.4)
     Tuesday ->
       hashi.new(width: 6, height: 6, islands: 15)
-      |> hashi.with_double_bridge_ratio(0.5)
+      |> hashi.with_double_bridge_ratio(0.4)
     Wednesday ->
       hashi.new(width: 7, height: 7, islands: 17)
-      |> hashi.with_double_bridge_ratio(0.6)
+      |> hashi.with_double_bridge_ratio(0.4)
     Thursday ->
       hashi.new(width: 8, height: 8, islands: 21)
-      |> hashi.with_double_bridge_ratio(0.6)
+      |> hashi.with_double_bridge_ratio(0.5)
     Friday ->
       hashi.new(width: 9, height: 9, islands: 25)
-      |> hashi.with_double_bridge_ratio(0.7)
+      |> hashi.with_double_bridge_ratio(0.3)
     Saturday ->
       hashi.new(width: 10, height: 10, islands: 30)
-      |> hashi.with_double_bridge_ratio(0.7)
+      |> hashi.with_double_bridge_ratio(0.5)
     Sunday ->
       hashi.new(width: 9, height: 9, islands: 26)
-      |> hashi.with_double_bridge_ratio(0.6)
+      |> hashi.with_double_bridge_ratio(0.5)
   }
 }
 

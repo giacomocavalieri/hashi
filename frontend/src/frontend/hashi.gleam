@@ -13,7 +13,6 @@ import gleam/string
 import gleam/time/calendar.{type Date}
 import gleam/time/duration.{type Duration}
 import gleam/time/timestamp.{type Timestamp}
-import hashi.{type Bridge, type InvalidSolution, type Puzzle}
 import lustre
 import lustre/attribute.{type Attribute}
 import lustre/effect.{type Effect}
@@ -21,6 +20,8 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/element/svg
 import lustre/event
+import shared/hashi.{type Bridge, type InvalidSolution, type Puzzle}
+import shared/schedule
 
 pub fn main() {
   let app = lustre.application(init, update, view)
@@ -32,10 +33,18 @@ pub fn main() {
     read_app_json_data("app-data")
     |> json.parse(daily_puzzle_decoder())
 
+  let current_time = timestamp.system_time()
   let state = case load_saved_state() {
     Ok(SaveState(puzzle_day: saved_puzzle_day, elapsed_time:, connections:))
       if saved_puzzle_day == puzzle_day
-    -> InitState(puzzle_day:, puzzle:, connections:, elapsed_time:)
+    ->
+      InitState(
+        puzzle_day:,
+        puzzle:,
+        connections:,
+        elapsed_time:,
+        current_time:,
+      )
 
     Ok(_) | Error(_) ->
       InitState(
@@ -43,6 +52,7 @@ pub fn main() {
         puzzle:,
         connections: dict.new(),
         elapsed_time: duration.seconds(0),
+        current_time:,
       )
   }
 
@@ -75,6 +85,7 @@ pub type Model {
     cursor: #(Int, Int),
     /// The time we spent solving the puzzle.
     elapsed_time: Duration,
+    current_time: Timestamp,
     /// When drawing a bridge from one island to another, this contains the
     /// coordinates of the starting island.
     start_island: Option(#(Int, Int)),
@@ -110,13 +121,20 @@ pub fn init(state: InitState) -> #(Model, Effect(Message)) {
 }
 
 pub fn init_model(state: InitState) -> Model {
-  let InitState(puzzle:, puzzle_day:, connections:, elapsed_time:) = state
+  let InitState(
+    puzzle:,
+    puzzle_day:,
+    connections:,
+    elapsed_time:,
+    current_time:,
+  ) = state
   let outcome = hashi.check(puzzle, connections)
   Model(
     puzzle_day:,
     cursor: #(0, 0),
     puzzle:,
     elapsed_time:,
+    current_time:,
     start_island: None,
     target_island: None,
     share: None,
@@ -273,6 +291,7 @@ pub type InitState {
     puzzle: Puzzle,
     connections: Dict(#(Int, Int), Dict(#(Int, Int), Bridge)),
     elapsed_time: Duration,
+    current_time: Timestamp,
   )
 }
 
@@ -475,15 +494,25 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       #(model, effect)
     }
 
-    TimerTicked(previous_tick:, current_time:) -> {
-      use <- skip_if_complete(model)
-      let elapsed_time =
-        model.elapsed_time
-        |> duration.add(timestamp.difference(previous_tick, current_time))
-      let model = Model(..model, elapsed_time:)
-      let effect = effect.batch([save_state(model), tick_timer()])
-      #(model, effect)
-    }
+    TimerTicked(previous_tick:, current_time:) ->
+      case is_complete(model) {
+        // If the game is not over we need to update the elapsed time and save
+        // the state.
+        False -> {
+          let elapsed_time =
+            model.elapsed_time
+            |> duration.add(timestamp.difference(previous_tick, current_time))
+          let model = Model(..model, elapsed_time:, current_time:)
+          let effect = effect.batch([save_state(model), tick_timer()])
+          #(model, effect)
+        }
+        // Otherwise we just update the current time with its new value.
+        True -> {
+          let model = Model(..model, current_time:)
+          let effect = tick_timer()
+          #(model, effect)
+        }
+      }
 
     UserClickedUndo -> {
       use <- skip_if_complete(model)
@@ -647,56 +676,76 @@ fn pretty_date(date: Date) -> String {
 }
 
 pub fn view(model: Model) -> Element(Message) {
-  html.main([attribute.class("center-stack")], [
-    html.h1([], [html.text("Hashi " <> pretty_date(model.puzzle_day))]),
+  html.main([attribute.class("center stack")], [
+    html.div([attribute.class("center")], [
+      html.h1([], [html.text("Hashi")]),
+      html.h2([], [html.text(pretty_date(model.puzzle_day))]),
+    ]),
     hashi_grid(model),
     button_controls(model),
   ])
 }
 
 fn button_controls(model: Model) -> Element(Message) {
-  let undo = case is_complete(model) {
-    True -> element.none()
-    False ->
-      html.button(
-        [
-          event.on_click(UserClickedUndo),
-          attribute.disabled(!history.can_step_back(model.solutions)),
-        ],
-        [html.text("undo")],
-      )
-  }
-
-  let redo = case is_complete(model) {
-    True -> element.none()
-    False ->
-      html.button(
-        [
-          event.on_click(UserClickedRedo),
-          attribute.disabled(!history.can_step_forward(model.solutions)),
-        ],
-        [html.text("redo")],
-      )
-  }
-
-  let share = case is_complete(model) {
-    False -> element.none()
+  let time = html.h3([], [html.text(pretty_elapsed_time(model))])
+  case is_complete(model) {
+    False -> {
+      let undo = case is_complete(model) {
+        True -> element.none()
+        False ->
+          html.button(
+            [
+              event.on_click(UserClickedUndo),
+              attribute.disabled(!history.can_step_back(model.solutions)),
+            ],
+            [html.text("undo")],
+          )
+      }
+      let redo = case is_complete(model) {
+        True -> element.none()
+        False ->
+          html.button(
+            [
+              event.on_click(UserClickedRedo),
+              attribute.disabled(!history.can_step_forward(model.solutions)),
+            ],
+            [html.text("redo")],
+          )
+      }
+      html.div([attribute.class("button-group")], [undo, time, redo])
+    }
     True -> {
       let #(attributes, text) = case model.share {
         Some(Clipboard) -> #([attribute.class("success")], "copied!")
         Some(RichShare) -> #([attribute.class("success")], "shared!")
         None -> #([event.on_click(UserClickedShare)], "share")
       }
-      html.button([attribute.class("share"), ..attributes], [html.text(text)])
+      let share =
+        html.button([attribute.class("share"), ..attributes], [html.text(text)])
+      html.div([attribute.class("center stack-s")], [
+        html.div([attribute.class("button-group")], [time, share]),
+        html.h3([], [html.text(pretty_missing_time(model))]),
+      ])
     }
   }
+}
 
-  html.div([attribute.class("button-group")], [
-    undo,
-    html.h2([], [html.text(pretty_elapsed_time(model))]),
-    redo,
-    share,
-  ])
+fn pretty_missing_time(model: Model) -> String {
+  let next_time = schedule.next_puzzle_time(model.puzzle_day)
+  let missing = timestamp.difference(model.current_time, next_time)
+  let missing = duration.to_seconds(missing) |> float.round
+
+  let ready_message = "The next puzzle is ready, refresh the page!"
+  use <- bool.guard(when: missing <= 1, return: ready_message)
+
+  let hours = missing / 60 / 60
+  let minutes = { missing - hours * 60 * 60 } / 60
+  let seconds = missing - hours * 60 * 60 - minutes * 60
+
+  let hours = int.to_string(hours) |> string.pad_start(to: 2, with: "0")
+  let minutes = int.to_string(minutes) |> string.pad_start(to: 2, with: "0")
+  let seconds = int.to_string(seconds) |> string.pad_start(to: 2, with: "0")
+  "Next puzzle in: " <> hours <> ":" <> minutes <> ":" <> seconds
 }
 
 fn hashi_grid(model: Model) -> Element(Message) {

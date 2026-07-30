@@ -1,4 +1,3 @@
-import backend/calendar_extra
 import backend/daily_puzzle
 import backend/router
 import backend/web
@@ -10,14 +9,15 @@ import gleam/json
 import gleam/otp/actor
 import gleam/otp/static_supervisor
 import gleam/otp/supervision
-import gleam/time/calendar.{type Date, TimeOfDay}
+import gleam/time/calendar.{type Date}
 import gleam/time/duration
 import gleam/time/timestamp
-import hashi
 import lustre/attribute
 import lustre/element.{type Element}
 import lustre/element/html
 import mist
+import shared/hashi
+import shared/schedule
 import simplifile
 import wisp
 import wisp/wisp_mist
@@ -56,8 +56,6 @@ fn daily_generator_spec(context: web.Context) {
   // We use the Italian offset so it's the most comfortable to me :)
   // We will generate the puzzle at 8:00 in the morning.
   let web.Context(cache:, puzzles_folder:, ..) = context
-  let offset = duration.hours(2)
-  let time = TimeOfDay(hours: 8, minutes: 0, seconds: 0, nanoseconds: 0)
 
   use <- supervision.worker
   actor.new_with_initialiser(100, fn(me) {
@@ -65,13 +63,13 @@ fn daily_generator_spec(context: web.Context) {
     Ok(actor.initialised(me))
   })
   |> actor.on_message(fn(me, _msg) {
-    // First we get today's date and generate a puzzle
-    let #(today, _) = timestamp.to_calendar(timestamp.system_time(), offset)
+    // First we get today's date and generate a puzzle.
+    let today = schedule.today()
     generate_puzzle(today, puzzles_folder, cache)
 
     // Then we figure out how long we have to sleep before waking up again.
     // We want to generate the puzzle at a fixed time of the next day!
-    timestamp.from_calendar(calendar_extra.next_day(today), time, offset)
+    schedule.next_puzzle_time(today)
     |> timestamp.difference(timestamp.system_time(), _)
     |> duration.to_milliseconds
     |> process.send_after(me, _, Nil)
@@ -141,6 +139,7 @@ fn puzzle_to_page(puzzle_day: Date, puzzle: hashi.Puzzle) -> String {
     hashi_frontend_app.init_model(hashi_frontend_app.InitState(
       connections: dict.new(),
       elapsed_time: duration.seconds(0),
+      current_time: timestamp.system_time(),
       puzzle_day:,
       puzzle:,
     ))
