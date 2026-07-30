@@ -1,3 +1,5 @@
+**/.DS_Store
+
 **/*.beam
 **/*.ez
 /backend/build
@@ -9,4 +11,4 @@
 **/dist
 
 backend/priv/static/hashi.js
-backend/priv/puzzles
+puzzles/*.hashi
