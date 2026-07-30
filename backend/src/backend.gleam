@@ -156,7 +156,8 @@ fn puzzle_to_page(puzzle_day: Date, puzzle: hashi.Puzzle) -> String {
         attribute.name("viewport"),
         attribute.content("width=device-width, initial-scale=1"),
       ]),
-      meta_og("og:title", "Play Hashi"),
+      meta_og("og:title", "🏝️ Play Hashi"),
+      meta_og("og:description", "Play a new Hashi puzzle every day!"),
     ]),
     html.body([], [
       html.div([attribute.id("app")], [
