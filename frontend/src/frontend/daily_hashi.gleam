@@ -317,20 +317,6 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
         }
       }
 
-    UserClickedUndo -> {
-      use <- skip_if_complete(model)
-      let model = Model(..model, grid: hashi_grid.step_back(model.grid))
-      let effect = save_state(model)
-      #(model, effect)
-    }
-
-    UserClickedRedo -> {
-      use <- skip_if_complete(model)
-      let model = Model(..model, grid: hashi_grid.step_forward(model.grid))
-      let effect = save_state(model)
-      #(model, effect)
-    }
-
     UserClickedShare -> {
       let effect = share_outcome(model)
       #(model, effect)
@@ -346,7 +332,20 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       #(model, effect)
     }
 
+    UserClickedUndo -> {
+      use <- skip_if_complete(model)
+      let model = Model(..model, grid: hashi_grid.step_back(model.grid))
+      let effect = save_state(model)
+      #(model, effect)
+    }
+    UserClickedRedo -> {
+      use <- skip_if_complete(model)
+      let model = Model(..model, grid: hashi_grid.step_forward(model.grid))
+      let effect = save_state(model)
+      #(model, effect)
+    }
     GridProducedMessage(message) -> {
+      use <- skip_if_complete(model)
       let #(grid, effect) = hashi_grid.update(model.grid, message)
       let model = Model(..model, grid:)
       let effect = effect.map(effect, GridProducedMessage)

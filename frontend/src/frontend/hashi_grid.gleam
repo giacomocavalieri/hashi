@@ -257,23 +257,22 @@ pub type Message {
 }
 
 pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
+  use <- skip_if_complete(model)
+
   case message {
     UserClickedBridge(between: one, and: other) -> {
-      use <- skip_if_complete(model)
       let model = disconnect_islands(model, one, other)
       let effect = effect.none()
       #(model, effect)
     }
 
     UserPressedOnIsland(point:) -> {
-      use <- skip_if_complete(model)
       let model = Model(..model, start_island: Some(point))
       let effect = effect.none()
       #(model, effect)
     }
 
     UserStoppedPressing -> {
-      use <- skip_if_complete(model)
       case model.start_island, model.target_island {
         None, _ | _, None -> {
           let model = Model(..model, start_island: None, target_island: None)
@@ -304,7 +303,6 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
     }
 
     PointerEnteredIsland(island) -> {
-      use <- skip_if_complete(model)
       let model = case model.start_island {
         Some(_) -> Model(..model, target_island: Some(island))
         None -> model
@@ -314,20 +312,17 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
     }
 
     PointerLeftIsland -> {
-      use <- skip_if_complete(model)
       let model = Model(..model, target_island: None)
       let effect = effect.none()
       #(model, effect)
     }
 
     UserMovedPointerOverGrid(event:) -> {
-      use <- skip_if_complete(model)
       let effect = handle_moved_pointer_event(event)
       #(model, effect)
     }
 
     PointerMovedToPoint(point:) -> {
-      use <- skip_if_complete(model)
       let model = Model(..model, cursor: point)
       let effect = effect.none()
       #(model, effect)
