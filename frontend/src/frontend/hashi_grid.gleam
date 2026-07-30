@@ -266,11 +266,22 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       #(model, effect)
     }
 
-    UserPressedOnIsland(point:) -> {
-      let model = Model(..model, start_island: Some(point))
-      let effect = effect.none()
-      #(model, effect)
-    }
+    UserPressedOnIsland(point:) ->
+      // If we press on an island and there was an already selected one, then
+      // we have to connect the two islands.
+      case model.start_island {
+        Some(start) -> {
+          let model = try_connect(model, start, point)
+          let effect = effect.none()
+          #(model, effect)
+        }
+
+        None -> {
+          let model = Model(..model, start_island: Some(point))
+          let effect = effect.none()
+          #(model, effect)
+        }
+      }
 
     UserStoppedPressing -> {
       case model.start_island, model.target_island {
@@ -280,25 +291,20 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
           #(model, effect)
         }
 
-        Some(start), Some(end) ->
-          case can_connect(model, start, end) {
-            Ok(bridge) -> {
-              let model = case bridge {
-                Some(bridge) -> connect_islands(model, start, end, bridge)
-                None -> disconnect_islands(model, start, end)
-              }
-              let model =
-                Model(..model, start_island: None, target_island: None)
-              let effect = effect.none()
-              #(model, effect)
-            }
-            Error(_) -> {
-              let model =
-                Model(..model, start_island: None, target_island: None)
-              let effect = effect.none()
-              #(model, effect)
-            }
-          }
+        // If we stop start and stop pressing on the same island where we
+        // started that counts as a click. We select the island that has just
+        // been clicked as the start and wait for the destination to be clicked.
+        Some(start), Some(end) if start == end -> {
+          let model = Model(..model, target_island: None)
+          let effect = effect.none()
+          #(model, effect)
+        }
+
+        Some(start), Some(end) -> {
+          let model = try_connect(model, start, end)
+          let effect = effect.none()
+          #(model, effect)
+        }
       }
     }
 
@@ -328,6 +334,18 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       #(model, effect)
     }
   }
+}
+
+/// Given a starting and end island, this will try and connect the two in the
+/// model.
+/// In any case, the current selected islands will be deselected!
+fn try_connect(model: Model, start: #(Int, Int), end: #(Int, Int)) -> Model {
+  let model = case can_connect(model, start, end) {
+    Ok(Some(bridge)) -> connect_islands(model, start, end, bridge)
+    Ok(None) -> disconnect_islands(model, start, end)
+    Error(_) -> model
+  }
+  Model(..model, start_island: None, target_island: None)
 }
 
 fn skip_if_complete(
