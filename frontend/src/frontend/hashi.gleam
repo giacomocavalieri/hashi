@@ -960,45 +960,102 @@ fn view_bridge(
   bridge: Bridge,
   attributes: List(Attribute(message)),
 ) -> Element(message) {
-  let offset = stroke_width
-
   let bridge_lines = case bridge {
     hashi.Single -> [
+      case x1 == x2 {
+        True ->
+          svg.rect([
+            attribute.attribute("fill", "transparent"),
+            attribute.attribute("stroke", "transparent"),
+            attribute.attribute(
+              "x",
+              int.to_string(int.min(x1, x2) - 3 * stroke_width),
+            ),
+            attribute.attribute("y", int.to_string(int.min(y1, y2))),
+            attribute.attribute("width", int.to_string(6 * stroke_width)),
+            attribute.attribute(
+              "height",
+              int.to_string(int.absolute_value(y1 - y2)),
+            ),
+          ])
+        False ->
+          svg.rect([
+            attribute.attribute("fill", "transparent"),
+            attribute.attribute("stroke", "transparent"),
+            attribute.attribute("x", int.to_string(int.min(x1, x2))),
+            attribute.attribute(
+              "y",
+              int.to_string(int.min(y1, y2) - 3 * stroke_width),
+            ),
+            attribute.attribute(
+              "width",
+              int.to_string(int.absolute_value(x1 - x2)),
+            ),
+            attribute.attribute("height", int.to_string(6 * stroke_width)),
+          ])
+      },
       svg.line([
         attribute.attribute("x1", int.to_string(x1)),
         attribute.attribute("y1", int.to_string(y1)),
         attribute.attribute("x2", int.to_string(x2)),
         attribute.attribute("y2", int.to_string(y2)),
       ]),
+      svg.rect([]),
     ]
 
     hashi.Double if x1 == x2 -> [
+      svg.rect([
+        attribute.attribute("fill", "transparent"),
+        attribute.attribute("stroke", "transparent"),
+        attribute.attribute(
+          "x",
+          int.to_string(int.min(x1, x2) - 3 * stroke_width),
+        ),
+        attribute.attribute("y", int.to_string(int.min(y1, y2))),
+        attribute.attribute("width", int.to_string(6 * stroke_width)),
+        attribute.attribute(
+          "height",
+          int.to_string(int.absolute_value(y1 - y2)),
+        ),
+      ]),
       svg.line([
-        attribute.attribute("x1", int.to_string(x1 - offset)),
+        attribute.attribute("x1", int.to_string(x1 - stroke_width)),
         attribute.attribute("y1", int.to_string(y1)),
-        attribute.attribute("x2", int.to_string(x2 - offset)),
+        attribute.attribute("x2", int.to_string(x2 - stroke_width)),
         attribute.attribute("y2", int.to_string(y2)),
       ]),
       svg.line([
-        attribute.attribute("x1", int.to_string(x1 + offset)),
+        attribute.attribute("x1", int.to_string(x1 + stroke_width)),
         attribute.attribute("y1", int.to_string(y1)),
-        attribute.attribute("x2", int.to_string(x2 + offset)),
+        attribute.attribute("x2", int.to_string(x2 + stroke_width)),
         attribute.attribute("y2", int.to_string(y2)),
       ]),
     ]
     hashi.Double -> [
-      svg.line([
-        attribute.attribute("x1", int.to_string(x1)),
-        attribute.attribute("y1", int.to_string(y1 - offset)),
-        attribute.attribute("x2", int.to_string(x2)),
-        attribute.attribute("y2", int.to_string(y2 - offset)),
+      svg.rect([
+        attribute.attribute("fill", "transparent"),
+        attribute.attribute("stroke", "transparent"),
+        attribute.attribute("x", int.to_string(int.min(x1, x2))),
+        attribute.attribute(
+          "y",
+          int.to_string(int.min(y1, y2) - 3 * stroke_width),
+        ),
+        attribute.attribute("width", int.to_string(int.absolute_value(x1 - x2))),
+        attribute.attribute("height", int.to_string(6 * stroke_width)),
       ]),
       svg.line([
         attribute.attribute("x1", int.to_string(x1)),
-        attribute.attribute("y1", int.to_string(y1 + offset)),
+        attribute.attribute("y1", int.to_string(y1 - stroke_width)),
         attribute.attribute("x2", int.to_string(x2)),
-        attribute.attribute("y2", int.to_string(y2 + offset)),
+        attribute.attribute("y2", int.to_string(y2 - stroke_width)),
       ]),
+      svg.line([
+        attribute.attribute("x1", int.to_string(x1)),
+        attribute.attribute("y1", int.to_string(y1 + stroke_width)),
+        attribute.attribute("x2", int.to_string(x2)),
+        attribute.attribute("y2", int.to_string(y2 + stroke_width)),
+      ]),
+      svg.rect([]),
     ]
   }
 
