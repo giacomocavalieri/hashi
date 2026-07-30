@@ -15,7 +15,7 @@ import gleam/time/duration
 import gleam/time/timestamp.{type Timestamp}
 import hashi.{type Bridge, type InvalidSolution, type Puzzle}
 import lustre
-import lustre/attribute
+import lustre/attribute.{type Attribute}
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
@@ -728,10 +728,19 @@ fn hashi_grid(model: Model) -> Element(Message) {
   let width = hashi.width(model.puzzle)
   let height = hashi.height(model.puzzle)
 
-  let points = {
+  let islands = {
     use islands, y <- int.range(from: 0, to: height, with: [])
     use islands, x <- int.range(from: 0, to: width, with: islands)
     [view_island(model, #(x, y)), ..islands]
+  }
+
+  let islands_hitboxes = {
+    use islands, y <- int.range(from: 0, to: height, with: [])
+    use islands, x <- int.range(from: 0, to: width, with: islands)
+    case hashi.has_island(model.puzzle, #(x, y)) {
+      True -> [view_island_hitbox(#(x, y)), ..islands]
+      False -> islands
+    }
   }
 
   let solution = history.current(model.solutions)
@@ -742,25 +751,37 @@ fn hashi_grid(model: Model) -> Element(Message) {
     // other and vice-versa. We only want to draw each bridge once, so we use
     // this trick.
     use <- bool.guard(when: x < other_x || y < other_y, return: bridges)
-    let bridge = view_bridge(#(x, y), #(other_x, other_y), bridge)
+    let bridge =
+      view_bridge_between_islands(#(x, y), #(other_x, other_y), bridge)
     [bridge, ..bridges]
   }
 
-  let current_bridge = case model.start_island, model.cursor {
+  let current_bridge = case model.start_island, model.target_island {
+    // If there's no start island selected then there's no bridge to be drawn.
     None, _ -> element.none()
-    Some(#(x, y)), #(cx, cy) -> {
-      let x1 = x * radius * 2 + radius
-      let y1 = y * radius * 2 + radius
+    // If there's another island selected then we clip the bridge to that
+    // island, so it's immediately clear where it's gonna land even if it's a
+    // bit far from the actual island circle.
+    Some(one), Some(other) ->
+      case can_connect(model, one, other) {
+        Error(_) -> {
+          let #(cx, cy) = model.cursor
+          let #(x1, y1) = island_center(one)
+          view_bridge(x1, cx, y1, cy, hashi.Single, [])
+        }
 
-      svg.line([
-        attribute.attribute("x1", int.to_string(x1)),
-        attribute.attribute("y1", int.to_string(y1)),
-        attribute.attribute("x2", int.to_string(cx)),
-        attribute.attribute("y2", int.to_string(cy)),
-        attribute.attribute("stroke-width", int.to_string(stroke_width)),
-        attribute.attribute("stroke-linecap", "round"),
-        attribute.class("hashi-bridge active"),
-      ])
+        Ok(_) -> {
+          let #(x1, y1) = island_center(one)
+          let #(x2, y2) = island_center(other)
+          view_bridge(x1, x2, y1, y2, hashi.Single, [])
+        }
+      }
+
+    // Otherwise, we draw the bridge up to where the cursor is.
+    Some(island), None -> {
+      let #(cx, cy) = model.cursor
+      let #(x1, y1) = island_center(island)
+      view_bridge(x1, cx, y1, cy, hashi.Single, [])
     }
   }
 
@@ -800,25 +821,41 @@ fn hashi_grid(model: Model) -> Element(Message) {
       ],
       [
         current_bridge,
+        element.fragment(islands_hitboxes),
         element.fragment(bridges),
-        element.fragment(points),
+        element.fragment(islands),
       ],
     )
   hashi_grid
 }
 
-fn view_bridge(
+fn view_bridge_between_islands(
   island: #(Int, Int),
   other_island: #(Int, Int),
   bridge: Bridge,
 ) -> Element(Message) {
-  let #(x, y) = island
-  let #(other_x, other_y) = other_island
+  let #(x1, y1) = island_center(island)
+  let #(x2, y2) = island_center(other_island)
+  view_bridge(x1, x2, y1, y2, bridge, [
+    event.on_click(UserClickedBridge(island, other_island)),
+  ])
+}
 
-  let x1 = x * radius * 2 + radius
-  let y1 = y * radius * 2 + radius
-  let x2 = other_x * radius * 2 + radius
-  let y2 = other_y * radius * 2 + radius
+/// Given an island this returns the coordinates where the center of the island
+/// should be in the puzzle's grid.
+fn island_center(island: #(Int, Int)) -> #(Int, Int) {
+  let #(x, y) = island
+  #(x * radius * 2 + radius, y * radius * 2 + radius)
+}
+
+fn view_bridge(
+  x1: Int,
+  x2: Int,
+  y1: Int,
+  y2: Int,
+  bridge: Bridge,
+  attributes: List(Attribute(message)),
+) -> Element(message) {
   let offset = stroke_width
 
   let bridge_lines = case bridge {
@@ -831,7 +868,7 @@ fn view_bridge(
       ]),
     ]
 
-    hashi.Double if x == other_x -> [
+    hashi.Double if x1 == x2 -> [
       svg.line([
         attribute.attribute("x1", int.to_string(x1 - offset)),
         attribute.attribute("y1", int.to_string(y1)),
@@ -871,20 +908,45 @@ fn view_bridge(
       attribute.attribute("stroke-width", int.to_string(stroke_width)),
       attribute.class("hashi-bridge"),
       double_class,
-      event.on_click(UserClickedBridge(#(x, y), #(other_x, other_y))),
+      ..attributes
     ],
     bridge_lines,
   )
 }
 
-fn view_island(model: Model, island: #(Int, Int)) -> Element(Message) {
+/// This draws a transparent bigger island centered where the island should be.
+/// This will act as a bigger hitbox to drop a bridge onto; from playing this on
+/// mobile, it would otherwise feel awkard having to drop the bridge exactly
+/// onto an island rather than close to it.
+fn view_island_hitbox(island: #(Int, Int)) -> Element(Message) {
   let #(x, y) = island
+  let #(cx, cy) = island_center(island)
 
+  svg.g(
+    [
+      attribute.data("x", int.to_string(x)),
+      attribute.data("y", int.to_string(y)),
+      attribute.class("hashi-island-hitbox"),
+    ],
+    [
+      svg.circle([
+        attribute.attribute("cx", int.to_string(cx)),
+        attribute.attribute("cy", int.to_string(cy)),
+        attribute.attribute("r", float.to_string(int.to_float(radius) *. 2.0)),
+        attribute.attribute("fill", "transparent"),
+        attribute.attribute("stroke-width", "0"),
+        attribute.attribute("stroke", "transparent"),
+      ]),
+    ],
+  )
+}
+
+fn view_island(model: Model, island: #(Int, Int)) -> Element(Message) {
   case hashi.island_rank(model.puzzle, island) {
     Error(_) -> element.none()
     Ok(rank) -> {
-      let cx = int.to_string(2 * radius * x + radius)
-      let cy = int.to_string(2 * radius * y + radius)
+      let #(x, y) = island
+      let #(cx, cy) = island_center(island)
 
       let selectable = case model.start_island {
         None -> attribute.class("selectable")
@@ -917,40 +979,25 @@ fn view_island(model: Model, island: #(Int, Int)) -> Element(Message) {
 
       svg.g(
         [
-          attribute.data("x", int.to_string(x)),
-          attribute.data("y", int.to_string(y)),
           attribute.class("hashi-island"),
+          attribute.class("hashi-island-hitbox"),
           event.on("pointerdown", decode.success(UserPressedOnIsland(island))),
-          event.on("pointerup", decode.success(UserStoppedPressing)),
           status,
           selectable,
+          attribute.data("x", int.to_string(x)),
+          attribute.data("y", int.to_string(y)),
         ],
         [
           svg.circle([
-            attribute.attribute("cx", cx),
-            attribute.attribute("cy", cy),
+            attribute.attribute("cx", int.to_string(cx)),
+            attribute.attribute("cy", int.to_string(cy)),
             attribute.attribute("r", int.to_string(radius)),
             attribute.attribute("stroke-width", int.to_string(stroke_width)),
           ]),
-          // We add a transparent bigger island below the actual one that is
-          // printed. This will act as a bigger hitbox to drop a bridge onto;
-          // from playing this on mobile, it would otherwise feel awkard having
-          // to drop the bridge exactly onto an island rather than close to it.
-          svg.circle([
-            attribute.attribute("cx", cx),
-            attribute.attribute("cy", cy),
-            attribute.attribute(
-              "r",
-              float.to_string(int.to_float(radius) *. 1.6),
-            ),
-            attribute.attribute("fill", "transparent"),
-            attribute.attribute("stroke-width", "0"),
-            attribute.attribute("stroke", "transparent"),
-          ]),
           svg.text(
             [
-              attribute.attribute("x", cx),
-              attribute.attribute("y", cy),
+              attribute.attribute("x", int.to_string(cx)),
+              attribute.attribute("y", int.to_string(cy)),
               attribute.attribute("text-anchor", "middle"),
               attribute.attribute("dominant-baseline", "central"),
             ],

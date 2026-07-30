@@ -25,11 +25,9 @@ export function do_handle_moved_pointer_event(
 
   const island = document
     .elementFromPoint(event.x, event.y)
-    ?.closest(".hashi-island");
+    ?.closest(".hashi-island-hitbox");
 
   if (island == null) {
-    // TODO) Probably something to check if we're still close to the previous
-    // island, we want some leeway
     on_island_exit();
   } else {
     on_island_enter([parseInt(island.dataset.x), parseInt(island.dataset.y)]);
