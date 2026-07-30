@@ -1,6 +1,8 @@
 **/*.beam
 **/*.ez
-**/build
+/backend/build
+/frontend/build
+/shared/build
 **/erl_crash.dump
 
 **/.lustre

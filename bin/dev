@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e
+
+cd frontend
+gleam run -m lustre/dev build frontend/hashi
+cd ../backend
+gleam run
