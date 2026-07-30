@@ -1,7 +1,7 @@
 import backend/daily_puzzle
 import backend/web.{type Context}
 import filepath
-import frontend/hashi as hashi_frontend_app
+import frontend/daily_hashi as daily_hashi_app
 import gleam/http.{Get, Post}
 import gleam/int
 import gleam/json
@@ -31,8 +31,8 @@ pub fn daily_puzzle(_req: Request, cache: daily_puzzle.Cache) -> Response {
 fn save_time(req: wisp.Request, context: Context) -> wisp.Response {
   use body <- wisp.require_string_body(req)
 
-  let assert Ok(hashi_frontend_app.Outcome(day:, seconds:)) =
-    json.parse(body, hashi_frontend_app.outcome_decoder())
+  let assert Ok(daily_hashi_app.Outcome(day:, seconds:)) =
+    json.parse(body, daily_hashi_app.outcome_decoder())
 
   let file_name =
     context.puzzles_folder

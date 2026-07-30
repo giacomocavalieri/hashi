@@ -3,7 +3,7 @@ import backend/router
 import backend/web.{type Context}
 import envoy
 import filepath
-import frontend/hashi as hashi_frontend_app
+import frontend/daily_hashi as daily_hashi_app
 import gleam/dict
 import gleam/erlang/atom
 import gleam/erlang/process
@@ -167,7 +167,7 @@ fn puzzle_to_page(
   // We create an initial dummy state to prerender the grid so that we don't see
   // the page flashing as the lustre app starts.
   let initial_state =
-    hashi_frontend_app.init_model(hashi_frontend_app.InitState(
+    daily_hashi_app.init_model(daily_hashi_app.InitState(
       connections: dict.new(),
       elapsed_time: duration.seconds(0),
       current_time: timestamp.system_time(),
@@ -193,17 +193,20 @@ fn puzzle_to_page(
     ]),
     html.body([], [
       html.div([attribute.id("app")], [
-        hashi_frontend_app.view(initial_state),
+        daily_hashi_app.view(initial_state),
       ]),
       html.script(
         [attribute.type_("application/hashi"), attribute.id("app-data")],
-        hashi_frontend_app.daily_puzzle_to_json(puzzle_day, puzzle, server_url)
+        daily_hashi_app.daily_puzzle_to_json(puzzle_day, puzzle, server_url)
           |> json.to_string,
       ),
       // The lustre app bundled with the runtime that will take over the page
       // and allow to interact with it!
       html.script(
-        [attribute.type_("text/javascript"), attribute.src("/static/hashi.js")],
+        [
+          attribute.type_("text/javascript"),
+          attribute.src("/static/daily_hashi.js"),
+        ],
         "",
       ),
     ]),

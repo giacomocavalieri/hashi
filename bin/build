@@ -2,6 +2,6 @@
 set -e
 
 cd frontend
-gleam run -m lustre/dev build frontend/hashi
+gleam run -m lustre/dev build frontend/daily_hashi
 cd ../backend
 gleam export erlang-shipment

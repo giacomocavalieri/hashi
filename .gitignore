@@ -10,5 +10,5 @@
 **/.lustre
 **/dist
 
-backend/priv/static/hashi.js
+backend/priv/static/daily_hashi.js
 puzzles/*.hashi
