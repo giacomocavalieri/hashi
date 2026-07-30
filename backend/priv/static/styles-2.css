@@ -35,7 +35,7 @@
     box-sizing: border-box;
     color: var(--text-colour);
     font-family: sans-serif;
-    max-inline-size: 60ch;
+    max-inline-size: 50ch;
     margin: 0;
     padding: 0;
 }
@@ -46,6 +46,7 @@ html {
 
 body {
     padding-block-start: var(--s1);
+    padding-inline: var(--s1);
 }
 
 html,
@@ -64,10 +65,13 @@ h1 {
     font-size: var(--s2);
 }
 
-button {
+button,
+.button {
     --button-colour: var(--bridge-colour);
     color: var(--button-colour);
+    cursor: pointer;
 
+    text-decoration: none;
     text-transform: uppercase;
     font-size: var(--s0);
     font-weight: bold;
@@ -82,10 +86,13 @@ button {
         color var(--transition-time);
     box-shadow: var(--s-5) var(--s-5) var(--button-colour);
 }
-button:active:not(:disabled) {
+button:active:not(:disabled),
+.button:active:not(:disabled) {
     box-shadow: 0 0 var(--button-colour);
 }
-button:disabled {
+button:disabled,
+.button:disabled {
+    cursor: not-allowed;
     --button-colour: var(--faded-bridge-colour);
 }
 .share.success {

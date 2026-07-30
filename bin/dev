@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e
 
+rm -rf backend/priv/static/generated
+mkdir backend/priv/static/generated
 cd frontend
-gleam run -m lustre/dev build frontend/daily_hashi
+gleam run -m lustre/dev build frontend/daily_hashi frontend/hashi_tutorial
 cd ../backend
 gleam run

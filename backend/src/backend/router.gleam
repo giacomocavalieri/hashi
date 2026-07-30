@@ -2,21 +2,78 @@ import backend/daily_puzzle
 import backend/web.{type Context}
 import filepath
 import frontend/daily_hashi as daily_hashi_app
+import frontend/hashi_tutorial as hashi_tutorial_app
 import gleam/http.{Get, Post}
 import gleam/int
 import gleam/json
+import lustre/attribute
+import lustre/element/html
 import simplifile
 import wisp.{type Request, type Response}
 
-// TODO) add a route to get the raw data of the puzzle
+// TODO:
+// -[ ] add a route to get the raw data of the puzzle
+
+const tutorial_cookie = "tutorial"
 
 pub fn handle_request(req: Request, context: Context) -> Response {
   use req <- web.middleware(req, context)
   case req.method, wisp.path_segments(req) {
-    Get, [] -> daily_puzzle(req, context.cache)
+    Get, [] ->
+      case wisp.get_cookie(req, tutorial_cookie, wisp.PlainText) {
+        Error(_) -> tutorial()
+        Ok(_) ->
+          daily_puzzle(req, context.cache)
+          |> renew_tutorial_cookie(req)
+      }
+
+    // When someone completes the tutorial we set the cookie and redirect them
+    // home so they can start playing!
+    Post, ["tutorial"] ->
+      wisp.redirect("/")
+      |> renew_tutorial_cookie(req)
+
+    // Someone has completed a puzzle and we store the time it took.
     Post, [] -> save_time(req, context)
+
+    // Don't know what happened here!
     _, _ -> wisp.not_found()
   }
+}
+
+fn renew_tutorial_cookie(response: Response, req: Request) -> Response {
+  // We set the cookie for a year, if someone doesn't play for a year straight
+  // we assume they forgot the rules.
+  // I don't even know if this is gonna last a full year!
+  wisp.set_cookie(
+    response,
+    req,
+    tutorial_cookie,
+    "completed :)",
+    wisp.PlainText,
+    60 * 60 * 24 * 30 * 12,
+  )
+}
+
+fn tutorial() -> Response {
+  // TODO) the tutorial is not cached I don't think that's ever gonna be a
+  // problem but best keep an eye on it.
+
+  web.layout([
+    html.div([attribute.id("app")], [
+      hashi_tutorial_app.view(hashi_tutorial_app.init(Nil).0),
+    ]),
+    // The lustre app bundled with the runtime that will take over the page
+    // and allow to interact with it!
+    html.script(
+      [
+        attribute.type_("module"),
+        attribute.src("/static/generated/hashi_tutorial.js"),
+      ],
+      "",
+    ),
+  ])
+  |> wisp.html_response(200)
 }
 
 /// The daily puzzle page is prerendered each day and served from an in-memory

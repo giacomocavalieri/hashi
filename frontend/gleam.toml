@@ -21,7 +21,7 @@ host = "0.0.0.0"
 no_html = true
 no_tailwind = true
 minify = true
-outdir = "../backend/priv/static"
+outdir = "../backend/priv/static/generated"
 
 [dependencies]
 gleam_stdlib = ">= 1.0.0 and < 2.0.0"

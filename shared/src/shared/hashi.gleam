@@ -645,6 +645,32 @@ fn move_in_direction(
   }
 }
 
+/// This will generate a puzzle with the exact shape, islands and connections
+/// passed to the function.
+///
+/// > Note the this will not perform any checks as to the correctness of the
+/// > given parameters, so make sure the width and height are sufficient and
+/// > this is a valid Hashi puzzle.
+///
+pub fn from_islands_and_connections(
+  width width: Int,
+  height height: Int,
+  islands islands: Set(#(Int, Int)),
+  connections connections: List(#(#(Int, Int), #(Int, Int), Bridge)),
+) -> Puzzle {
+  let puzzle =
+    Puzzle(
+      width:,
+      height:,
+      islands:,
+      connections: dict.new(),
+      bridge_cells: set.new(),
+    )
+
+  use puzzle, #(start, end, bridge) <- list.fold(connections, puzzle)
+  connect_islands(puzzle, start, end, bridge)
+}
+
 /// Represents an invalid solution to a hashi puzzle.
 /// A solution can be invalid in two cases: not all islands are connected, or
 /// some islands have too many bridges.

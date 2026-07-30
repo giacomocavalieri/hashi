@@ -17,7 +17,6 @@ import gleam/time/calendar.{type Date}
 import gleam/time/duration
 import gleam/time/timestamp
 import lustre/attribute
-import lustre/element.{type Element}
 import lustre/element/html
 import mist
 import shared/hashi
@@ -176,47 +175,23 @@ fn puzzle_to_page(
       server_url:,
     ))
 
-  html.html([attribute.lang("en")], [
-    html.head([], [
-      html.title([], "Hashi"),
-      html.link([
-        attribute.href("/static/styles.css"),
-        attribute.rel("stylesheet"),
-      ]),
-      html.meta([attribute.charset("utf-8")]),
-      html.meta([
-        attribute.name("viewport"),
-        attribute.content("width=device-width, initial-scale=1"),
-      ]),
-      meta_og("og:title", "🏝️ Play Hashi"),
-      meta_og("og:description", "Play a new Hashi puzzle every day!"),
+  web.layout([
+    html.div([attribute.id("app")], [
+      daily_hashi_app.view(initial_state),
     ]),
-    html.body([], [
-      html.div([attribute.id("app")], [
-        daily_hashi_app.view(initial_state),
-      ]),
-      html.script(
-        [attribute.type_("application/hashi"), attribute.id("app-data")],
-        daily_hashi_app.daily_puzzle_to_json(puzzle_day, puzzle, server_url)
-          |> json.to_string,
-      ),
-      // The lustre app bundled with the runtime that will take over the page
-      // and allow to interact with it!
-      html.script(
-        [
-          attribute.type_("text/javascript"),
-          attribute.src("/static/daily_hashi.js"),
-        ],
-        "",
-      ),
-    ]),
-  ])
-  |> element.to_string
-}
-
-fn meta_og(name: String, content: String) -> Element(_) {
-  html.meta([
-    attribute.attribute("property", name),
-    attribute.content(content),
+    html.script(
+      [attribute.type_("application/hashi"), attribute.id("app-data")],
+      daily_hashi_app.daily_puzzle_to_json(puzzle_day, puzzle, server_url)
+        |> json.to_string,
+    ),
+    // The lustre app bundled with the runtime that will take over the page
+    // and allow to interact with it!
+    html.script(
+      [
+        attribute.type_("module"),
+        attribute.src("/static/generated/daily_hashi.js"),
+      ],
+      "",
+    ),
   ])
 }

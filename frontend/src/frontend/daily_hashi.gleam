@@ -391,6 +391,9 @@ fn after(
   dispatch(message())
 }
 
+@external(javascript, "./hashi_ffi.mjs", "do_after")
+fn do_after(milliseconds: Int, value: fn() -> Nil) -> Nil
+
 const timer_interval_ms = 1000
 
 fn tick_timer() -> Effect(Message) {
@@ -400,9 +403,6 @@ fn tick_timer() -> Effect(Message) {
   let current_time = timestamp.system_time()
   dispatch(TimerTicked(previous_tick:, current_time:))
 }
-
-@external(javascript, "./hashi_ffi.mjs", "do_after")
-fn do_after(milliseconds: Int, value: fn() -> Nil) -> Nil
 
 fn share_outcome(model: Model) -> Effect(Message) {
   use dispatch <- effect.from
