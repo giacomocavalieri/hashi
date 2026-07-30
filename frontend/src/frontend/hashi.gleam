@@ -11,7 +11,7 @@ import gleam/result
 import gleam/set.{type Set}
 import gleam/string
 import gleam/time/calendar.{type Date}
-import gleam/time/duration
+import gleam/time/duration.{type Duration}
 import gleam/time/timestamp.{type Timestamp}
 import hashi.{type Bridge, type InvalidSolution, type Puzzle}
 import lustre
@@ -33,29 +33,16 @@ pub fn main() {
     |> json.parse(daily_puzzle_decoder())
 
   let state = case load_saved_state() {
-    Ok(SaveState(
-      puzzle_day: saved_puzzle_day,
-      start_time:,
-      connections:,
-      end_time:,
-    ))
+    Ok(SaveState(puzzle_day: saved_puzzle_day, elapsed_time:, connections:))
       if saved_puzzle_day == puzzle_day
-    ->
-      InitState(
-        puzzle_day:,
-        puzzle:,
-        connections:,
-        start_time:,
-        current_time: option.unwrap(end_time, timestamp.system_time()),
-      )
+    -> InitState(puzzle_day:, puzzle:, connections:, elapsed_time:)
 
     Ok(_) | Error(_) ->
       InitState(
         puzzle_day:,
         puzzle:,
         connections: dict.new(),
-        start_time: timestamp.system_time(),
-        current_time: timestamp.system_time(),
+        elapsed_time: duration.seconds(0),
       )
   }
 
@@ -86,10 +73,8 @@ pub type Model {
     /// The position of the cursor, in the coordinate space of the svg grid
     /// holding the puzzle.
     cursor: #(Int, Int),
-    /// When the puzzle was started.
-    start_time: Timestamp,
-    /// The current time, updated every second.
-    current_time: Timestamp,
+    /// The time we spent solving the puzzle.
+    elapsed_time: Duration,
     /// When drawing a bridge from one island to another, this contains the
     /// coordinates of the starting island.
     start_island: Option(#(Int, Int)),
@@ -125,15 +110,13 @@ pub fn init(state: InitState) -> #(Model, Effect(Message)) {
 }
 
 pub fn init_model(state: InitState) -> Model {
-  let InitState(puzzle:, puzzle_day:, connections:, start_time:, current_time:) =
-    state
+  let InitState(puzzle:, puzzle_day:, connections:, elapsed_time:) = state
   let outcome = hashi.check(puzzle, connections)
   Model(
     puzzle_day:,
     cursor: #(0, 0),
     puzzle:,
-    start_time:,
-    current_time:,
+    elapsed_time:,
     start_island: None,
     target_island: None,
     share: None,
@@ -289,8 +272,7 @@ pub type InitState {
     puzzle_day: Date,
     puzzle: Puzzle,
     connections: Dict(#(Int, Int), Dict(#(Int, Int), Bridge)),
-    start_time: Timestamp,
-    current_time: Timestamp,
+    elapsed_time: Duration,
   )
 }
 
@@ -350,52 +332,45 @@ type SaveState {
     /// We need this to make sure we're loading the state for the correct
     /// puzzle!
     puzzle_day: Date,
-    /// When the puzzle was started.
-    start_time: Timestamp,
-    /// If the puzzle was completed, this is going to be the time when the
-    /// puzzle was completed.
-    end_time: Option(Timestamp),
+    /// How long we've spent solving the puzzle so far.
+    elapsed_time: Duration,
     /// The connections drawn by the user so far.
     connections: Dict(#(Int, Int), Dict(#(Int, Int), Bridge)),
   )
 }
 
 fn save_state_to_json(save_state: SaveState) -> Json {
-  let SaveState(puzzle_day:, start_time:, end_time:, connections:) = save_state
+  let SaveState(puzzle_day:, elapsed_time:, connections:) = save_state
 
   json.object([
     #("puzzle_day", date_to_json(puzzle_day)),
-    #("start_time", timestamp_to_json(start_time)),
-    #("end_time", json.nullable(end_time, timestamp_to_json)),
+    #("elapsed_time", duration_to_json(elapsed_time)),
     #("connections", hashi.connections_to_json(connections)),
   ])
 }
 
 fn save_state_decoder() -> Decoder(SaveState) {
   use puzzle_day <- decode.field("puzzle_day", date_decoder())
-  use start_time <- decode.field("start_time", timestamp_decoder())
-  use end_time <- decode.field("end_time", decode.optional(timestamp_decoder()))
+  use elapsed_time <- decode.field("elapsed_time", duration_decoder())
   use connections <- decode.field("connections", hashi.connections_decoder())
   let connections = dict.from_list(connections)
-  decode.success(SaveState(puzzle_day:, start_time:, connections:, end_time:))
+  decode.success(SaveState(puzzle_day:, elapsed_time:, connections:))
 }
 
-fn timestamp_to_json(timestamp: Timestamp) {
-  let #(seconds, nanoseconds) =
-    timestamp.to_unix_seconds_and_nanoseconds(timestamp)
+fn duration_to_json(duration: Duration) -> Json {
+  let #(seconds, nanoseconds) = duration.to_seconds_and_nanoseconds(duration)
   json.preprocessed_array([
     json.int(seconds),
     json.int(nanoseconds),
   ])
 }
 
-fn timestamp_decoder() -> Decoder(Timestamp) {
+fn duration_decoder() -> Decoder(Duration) {
   use seconds <- decode.field(0, decode.int)
   use nanoseconds <- decode.field(1, decode.int)
-  decode.success(timestamp.from_unix_seconds_and_nanoseconds(
-    seconds,
-    nanoseconds,
-  ))
+  duration.seconds(seconds)
+  |> duration.add(duration.nanoseconds(nanoseconds))
+  |> decode.success
 }
 
 // UPDATE ----------------------------------------------------------------------
@@ -417,7 +392,7 @@ pub type Message {
 
   UserClickedBridge(between: #(Int, Int), and: #(Int, Int))
 
-  TimerTicked(current_time: Timestamp)
+  TimerTicked(previous_tick: Timestamp, current_time: Timestamp)
   UserClickedUndo
   UserClickedRedo
 
@@ -500,10 +475,13 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       #(model, effect)
     }
 
-    TimerTicked(current_time) -> {
+    TimerTicked(previous_tick:, current_time:) -> {
       use <- skip_if_complete(model)
-      let model = Model(..model, current_time:)
-      let effect = tick_timer()
+      let elapsed_time =
+        model.elapsed_time
+        |> duration.add(timestamp.difference(previous_tick, current_time))
+      let model = Model(..model, elapsed_time:)
+      let effect = effect.batch([save_state(model), tick_timer()])
       #(model, effect)
     }
 
@@ -563,10 +541,11 @@ fn after(
 const timer_interval_ms = 1000
 
 fn tick_timer() -> Effect(Message) {
-  after(timer_interval_ms, fn() {
-    let current_time = timestamp.system_time()
-    TimerTicked(current_time:)
-  })
+  use dispatch <- effect.from
+  let previous_tick = timestamp.system_time()
+  use <- do_after(timer_interval_ms)
+  let current_time = timestamp.system_time()
+  dispatch(TimerTicked(previous_tick:, current_time:))
 }
 
 @external(javascript, "./hashi_ffi.mjs", "do_after")
@@ -629,11 +608,7 @@ fn save_state(model: Model) -> Effect(Message) {
   SaveState(
     puzzle_day: model.puzzle_day,
     connections: history.current(model.solutions).connections,
-    start_time: model.start_time,
-    end_time: case is_complete(model) {
-      True -> Some(model.current_time)
-      False -> None
-    },
+    elapsed_time: model.elapsed_time,
   )
   |> save_state_to_json
   |> json.to_string
@@ -1011,7 +986,7 @@ fn view_island(model: Model, island: #(Int, Int)) -> Element(Message) {
 
 fn pretty_elapsed_time(model: Model) -> String {
   let elapsed_seconds =
-    timestamp.difference(model.start_time, model.current_time)
+    model.elapsed_time
     |> duration.to_seconds
     |> float.round
 

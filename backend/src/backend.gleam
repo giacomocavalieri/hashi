@@ -140,8 +140,7 @@ fn puzzle_to_page(puzzle_day: Date, puzzle: hashi.Puzzle) -> String {
   let initial_state =
     hashi_frontend_app.init_model(hashi_frontend_app.InitState(
       connections: dict.new(),
-      current_time: timestamp.system_time(),
-      start_time: timestamp.system_time(),
+      elapsed_time: duration.seconds(0),
       puzzle_day:,
       puzzle:,
     ))
