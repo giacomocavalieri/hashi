@@ -1,6 +1,7 @@
 import frontend/hashi_grid
 import gleam/dict
 import gleam/int
+import gleam/list
 import gleam/set
 import lustre
 import lustre/attribute
@@ -17,23 +18,18 @@ pub fn main() -> Result(lustre.Runtime(Message), lustre.Error) {
 // MODEL -----------------------------------------------------------------------
 
 pub opaque type Model {
-  Tutorial(step: Step)
-  CompletedTutorial
+  Model(steps: List(#(Int, Step)), total_steps: Int)
 }
 
 type Step {
-  Step1(description: String, grid: hashi_grid.Model)
-  Step2(description: String, grid: hashi_grid.Model)
-  Step3(description: String, grid: hashi_grid.Model)
-  Step4(description: String, grid: hashi_grid.Model)
-  Step5(description: String, grid: hashi_grid.Model)
+  Step(description: String, grid: hashi_grid.Model)
 }
 
-fn step_1() -> Step {
+fn how_to_draw_a_bridge() -> Step {
   let first = #(1, 3)
   let second = #(5, 3)
 
-  Step1(
+  Step(
     "These are islands. Click on one and move to the other to build a bridge between them.",
     grid: hashi_grid.init(hashi_grid.InitState(
       puzzle: hashi.from_islands_and_connections(
@@ -47,11 +43,11 @@ fn step_1() -> Step {
   )
 }
 
-fn step_2() -> Step {
+fn how_to_draw_a_double_bridge() -> Step {
   let first = #(1, 3)
   let second = #(5, 3)
 
-  Step2(
+  Step(
     "Islands can be connected by at most two bridges. Try and draw another one.",
     grid: hashi_grid.init(hashi_grid.InitState(
       puzzle: hashi.from_islands_and_connections(
@@ -68,12 +64,12 @@ fn step_2() -> Step {
   )
 }
 
-fn step_3() -> Step {
+fn what_the_island_number_is() -> Step {
   let first = #(0, 3)
   let second = #(3, 3)
   let third = #(6, 3)
 
-  Step3(
+  Step(
     "Each island has a number. That's how many bridges it needs to have.",
     grid: hashi_grid.init(hashi_grid.InitState(
       puzzle: hashi.from_islands_and_connections(
@@ -90,12 +86,12 @@ fn step_3() -> Step {
   )
 }
 
-fn step_4() -> Step {
+fn how_to_remove_a_bridge() -> Step {
   let first = #(1, 1)
   let second = #(5, 1)
   let third = #(1, 5)
   let fourth = #(5, 5)
-  Step4(
+  Step(
     "You can click on a bridge to remove it.",
     grid: hashi_grid.init(hashi_grid.InitState(
       puzzle: hashi.from_islands_and_connections(
@@ -142,8 +138,32 @@ fn step_4() -> Step {
   )
 }
 
-fn step_5() -> Step {
-  Step5(
+fn bridges_cannot_be_diagonal_or_cross() -> Step {
+  let first = #(5, 5)
+  let second = #(5, 3)
+  let third = #(1, 3)
+  let fourth = #(1, 1)
+
+  Step(
+    description: "Bridges cannot go in diagonal or cross each other.",
+    grid: hashi_grid.init(hashi_grid.InitState(
+      puzzle: hashi.from_islands_and_connections(
+        width: 7,
+        height: 7,
+        islands: set.from_list([first, second, third, fourth]),
+        connections: [
+          #(first, second, hashi.Single),
+          #(second, third, hashi.Single),
+          #(third, fourth, hashi.Single),
+        ],
+      ),
+      connections: dict.new(),
+    )),
+  )
+}
+
+fn how_to_win() -> Step {
+  Step(
     "To win all islands must be connected and have the right number of bridges.",
     grid: hashi_grid.init(hashi_grid.InitState(
       puzzle: hashi.new(width: 7, height: 7, islands: 8)
@@ -155,20 +175,23 @@ fn step_5() -> Step {
 }
 
 pub fn init(_nil: Nil) -> #(Model, Effect(Message)) {
-  let model = Tutorial(step_1())
+  let steps = [
+    how_to_draw_a_bridge(),
+    how_to_draw_a_double_bridge(),
+    what_the_island_number_is(),
+    how_to_remove_a_bridge(),
+    bridges_cannot_be_diagonal_or_cross(),
+    how_to_win(),
+  ]
+
+  let model =
+    Model(
+      steps: list.index_map(steps, fn(step, index) { #(index, step) }),
+      total_steps: list.length(steps),
+    )
+
   let effect = effect.none()
   #(model, effect)
-}
-
-fn next_step(model: Model) -> Model {
-  case model {
-    Tutorial(Step1(..)) -> Tutorial(step_2())
-    Tutorial(Step2(..)) -> Tutorial(step_3())
-    Tutorial(Step3(..)) -> Tutorial(step_4())
-    Tutorial(Step4(..)) -> Tutorial(step_5())
-    Tutorial(Step5(..)) -> CompletedTutorial
-    CompletedTutorial -> CompletedTutorial
-  }
 }
 
 // UPDATE ----------------------------------------------------------------------
@@ -180,7 +203,7 @@ pub type Message {
 
 fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
   case message, model {
-    GridProducedMessage(message), Tutorial(step) -> {
+    GridProducedMessage(message), Model(steps: [#(_, step), ..], ..) -> {
       use <- skip_if_complete(model)
       let #(grid, effect) = hashi_grid.update(step.grid, message)
       let model = set_grid(model, grid)
@@ -193,12 +216,12 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       #(model, effect)
     }
 
-    GridProducedMessage(_), CompletedTutorial -> {
+    GridProducedMessage(_), Model(steps: [], ..) -> {
       #(model, effect.none())
     }
 
     TimeoutExpired, _ -> {
-      let model = next_step(model)
+      let model = Model(..model, steps: list.drop(model.steps, 1))
       let effect = effect.none()
       #(model, effect)
     }
@@ -210,8 +233,8 @@ fn skip_if_complete(
   run: fn() -> #(Model, Effect(Message)),
 ) -> #(Model, Effect(Message)) {
   case model {
-    CompletedTutorial -> #(model, effect.none())
-    Tutorial(step:) ->
+    Model(steps: [], ..) -> #(model, effect.none())
+    Model(steps: [#(_step_number, step), ..], ..) ->
       case hashi_grid.is_complete(step.grid) {
         True -> #(model, effect.none())
         False -> run()
@@ -221,12 +244,9 @@ fn skip_if_complete(
 
 fn set_grid(model: Model, grid: hashi_grid.Model) -> Model {
   case model {
-    Tutorial(Step1(..) as step) -> Tutorial(Step1(..step, grid:))
-    Tutorial(Step2(..) as step) -> Tutorial(Step2(..step, grid:))
-    Tutorial(Step3(..) as step) -> Tutorial(Step3(..step, grid:))
-    Tutorial(Step4(..) as step) -> Tutorial(Step4(..step, grid:))
-    Tutorial(Step5(..) as step) -> Tutorial(Step5(..step, grid:))
-    CompletedTutorial -> CompletedTutorial
+    Model(steps: [#(n, step), ..steps], ..) ->
+      Model(..model, steps: [#(n, Step(..step, grid:)), ..steps])
+    Model(steps: [], ..) -> model
   }
 }
 
@@ -250,11 +270,15 @@ pub fn view(model: Model) -> Element(Message) {
   let title = "🛟 Hashi tutorial"
 
   case model {
-    Tutorial(step:) ->
+    Model(steps: [#(step_number, step), ..], total_steps:) ->
       html.main([attribute.class("center stack")], [
         html.div([attribute.class("center")], [
           html.h1([], [html.text(title)]),
-          html.h2([], [html.text(int.to_string(step_number(step)) <> " / 5")]),
+          html.h2([], [
+            html.text(
+              int.to_string(step_number) <> " / " <> int.to_string(total_steps),
+            ),
+          ]),
         ]),
         html.p([], [html.text(step.description)]),
         hashi_grid.view(step.grid)
@@ -262,7 +286,7 @@ pub fn view(model: Model) -> Element(Message) {
         complete_tutorial_form("Skip tutorial"),
       ])
 
-    CompletedTutorial ->
+    Model(steps: [], ..) ->
       html.main([attribute.class("center stack")], [
         html.h1([], [html.text(title)]),
         html.p([], [
@@ -283,14 +307,4 @@ fn complete_tutorial_form(text: String) -> Element(message) {
       attribute.value(text),
     ]),
   ])
-}
-
-fn step_number(step: Step) -> Int {
-  case step {
-    Step1(..) -> 1
-    Step2(..) -> 2
-    Step3(..) -> 3
-    Step4(..) -> 4
-    Step5(..) -> 5
-  }
 }
