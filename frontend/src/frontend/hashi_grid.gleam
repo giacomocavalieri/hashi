@@ -121,7 +121,7 @@ fn add_bridge_cells(
   }
 }
 
-fn disconnect_islands(
+fn remove_one_bridge(
   model: Model,
   one: #(Int, Int),
   other: #(Int, Int),
@@ -132,9 +132,9 @@ fn disconnect_islands(
   let solution = history.current(model.solutions)
   let connections =
     solution.connections
-    |> dict.upsert(one, try_delete(_, other))
-    |> dict.upsert(other, try_delete(_, one))
+    |> try_remove_one_bridge(from: one, to: other)
   let outcome = hashi.check(model.puzzle, connections)
+
   let bridges = case Nil {
     _ if x == other_x ->
       int.range(y, other_y, solution.bridges, fn(bridges, y) {
@@ -261,7 +261,7 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
 
   case message {
     UserClickedBridge(between: one, and: other) -> {
-      let model = disconnect_islands(model, one, other)
+      let model = remove_one_bridge(model, one, other)
       let effect = effect.none()
       #(model, effect)
     }
@@ -342,7 +342,7 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
 fn try_connect(model: Model, start: #(Int, Int), end: #(Int, Int)) -> Model {
   let model = case can_connect(model, start, end) {
     Ok(Some(bridge)) -> connect_islands(model, start, end, bridge)
-    Ok(None) -> disconnect_islands(model, start, end)
+    Ok(None) -> remove_one_bridge(model, start, end)
     Error(_) -> model
   }
   Model(..model, start_island: None, target_island: None)
@@ -737,11 +737,36 @@ fn insert_or_create(
   }
 }
 
-fn try_delete(dict: Option(Dict(key, value)), key: key) -> Dict(key, value) {
-  case dict {
-    Some(dict) -> dict.delete(dict, key)
-    None -> dict.new()
+fn try_remove_one_bridge(
+  connections: Dict(#(Int, Int), Dict(#(Int, Int), Bridge)),
+  from one: #(Int, Int),
+  to other: #(Int, Int),
+) -> Dict(#(Int, Int), Dict(#(Int, Int), Bridge)) {
+  let connections = case dict.get(connections, one) {
+    Error(_) -> connections
+    Ok(reachable) -> {
+      let reachable = case dict.get(reachable, other) {
+        Error(_) -> reachable
+        Ok(hashi.Single) -> dict.delete(reachable, other)
+        Ok(hashi.Double) -> dict.insert(reachable, other, hashi.Single)
+      }
+      dict.insert(connections, one, reachable)
+    }
   }
+
+  let connections = case dict.get(connections, other) {
+    Error(_) -> connections
+    Ok(reachable) -> {
+      let reachable = case dict.get(reachable, one) {
+        Error(_) -> reachable
+        Ok(hashi.Single) -> dict.delete(reachable, one)
+        Ok(hashi.Double) -> dict.insert(reachable, one, hashi.Single)
+      }
+      dict.insert(connections, other, reachable)
+    }
+  }
+
+  connections
 }
 
 /// This returns true if `predicate` returns true for any of the numbers in
