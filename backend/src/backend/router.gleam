@@ -19,22 +19,27 @@ const tutorial_cookie = "tutorial"
 pub fn handle_request(req: Request, context: Context) -> Response {
   use req <- web.middleware(req, context)
   case req.method, wisp.path_segments(req) {
+    // Someone's getting the daily puzzle, we check if they've done the tutorial
+    // or send them to the tutorial page.
     Get, [] ->
       case wisp.get_cookie(req, tutorial_cookie, wisp.PlainText) {
-        Error(_) -> tutorial()
+        Error(_) -> wisp.redirect("/tutorial")
         Ok(_) ->
           daily_puzzle(req, context.cache)
           |> renew_tutorial_cookie(req)
       }
 
-    // When someone completes the tutorial we set the cookie and redirect them
-    // home so they can start playing!
+    // Someone has completed a puzzle and we store the time it took.
+    Post, [] -> save_time(req, context)
+
+    // The tutorial page.
+    Get, ["tutorial"] -> tutorial()
+
+    // Someone posts here when they've completed the tutorial. We set the cookie
+    // and send them to the daily puzzle page.
     Post, ["tutorial"] ->
       wisp.redirect("/")
       |> renew_tutorial_cookie(req)
-
-    // Someone has completed a puzzle and we store the time it took.
-    Post, [] -> save_time(req, context)
 
     // Don't know what happened here!
     _, _ -> wisp.not_found()

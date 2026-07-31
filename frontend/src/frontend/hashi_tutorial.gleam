@@ -276,7 +276,7 @@ pub fn view(model: Model) -> Element(Message) {
 }
 
 fn complete_tutorial_form(text: String) -> Element(message) {
-  html.form([attribute.action("/tutorial"), attribute.method("post")], [
+  html.form([attribute.method("post")], [
     html.input([
       attribute.class("button"),
       attribute.type_("submit"),
