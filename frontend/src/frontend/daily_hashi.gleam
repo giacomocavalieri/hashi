@@ -5,6 +5,7 @@ import gleam/dynamic/decode.{type Decoder}
 import gleam/float
 import gleam/int
 import gleam/json.{type Json}
+import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/set.{type Set}
@@ -474,25 +475,6 @@ fn send_outcome_to_server(model: Model) -> Effect(Message) {
 
 // VIEW ------------------------------------------------------------------------
 
-fn pretty_date(date: Date) -> String {
-  let calendar.Date(year:, month:, day:) = date
-
-  let year =
-    int.to_string(year)
-    |> string.pad_start(to: 4, with: "0")
-
-  let month =
-    calendar.month_to_int(month)
-    |> int.to_string
-    |> string.pad_start(to: 2, with: "0")
-
-  let day =
-    int.to_string(day)
-    |> string.pad_start(to: 2, with: "0")
-
-  year <> "-" <> month <> "-" <> day
-}
-
 pub fn view(model: Model) -> Element(Message) {
   html.main([attribute.class("center stack")], [
     html.div([attribute.class("center")], [
@@ -501,6 +483,17 @@ pub fn view(model: Model) -> Element(Message) {
     ]),
     hashi_grid.view(model.grid)
       |> element.map(GridProducedMessage),
+    case hashi_grid.current_solution(model.grid).outcome {
+      Ok(_) | Error(hashi.IslandsHaveWrongBridges(..)) -> element.none()
+      Error(hashi.DisjointGroups(sets)) ->
+        html.h3([], [
+          html.text(
+            "This is not a valid solution, there are "
+            <> int.to_string(list.length(sets))
+            <> " groups of islands that are not connected to each other.",
+          ),
+        ])
+    },
     button_controls(model),
   ])
 }
@@ -582,4 +575,23 @@ fn pretty_elapsed_time(model: Model) -> String {
     int.to_string(elapsed_seconds) |> string.pad_start(with: "0", to: 2)
 
   elapsed_minutes <> ":" <> elapsed_seconds
+}
+
+fn pretty_date(date: Date) -> String {
+  let calendar.Date(year:, month:, day:) = date
+
+  let year =
+    int.to_string(year)
+    |> string.pad_start(to: 4, with: "0")
+
+  let month =
+    calendar.month_to_int(month)
+    |> int.to_string
+    |> string.pad_start(to: 2, with: "0")
+
+  let day =
+    int.to_string(day)
+    |> string.pad_start(to: 2, with: "0")
+
+  year <> "-" <> month <> "-" <> day
 }
