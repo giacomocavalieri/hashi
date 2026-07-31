@@ -42,7 +42,9 @@ pub fn handle_request(req: Request, context: Context) -> Response {
       |> renew_tutorial_cookie(req)
 
     // Don't know what happened here!
-    _, _ -> wisp.not_found()
+    _, _ ->
+      wisp.not_found()
+      |> wisp.html_body(web.not_found_page())
   }
 }
 

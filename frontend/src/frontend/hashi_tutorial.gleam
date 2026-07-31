@@ -247,14 +247,16 @@ fn do_after(milliseconds: Int, value: fn() -> Nil) -> Nil
 // VIEW ------------------------------------------------------------------------
 
 pub fn view(model: Model) -> Element(Message) {
+  let title = "🛟 Hashi tutorial"
+
   case model {
     Tutorial(step:) ->
       html.main([attribute.class("center stack")], [
         html.div([attribute.class("center")], [
-          html.h1([], [html.text("Hashi tutorial")]),
+          html.h1([], [html.text(title)]),
           html.h2([], [html.text(int.to_string(step_number(step)) <> " / 5")]),
         ]),
-        html.h3([], [html.text(step.description)]),
+        html.p([], [html.text(step.description)]),
         hashi_grid.view(step.grid)
           |> element.map(GridProducedMessage),
         complete_tutorial_form("Skip tutorial"),
@@ -262,10 +264,8 @@ pub fn view(model: Model) -> Element(Message) {
 
     CompletedTutorial ->
       html.main([attribute.class("center stack")], [
-        html.div([attribute.class("center")], [
-          html.h1([], [html.text("Hashi tutorial")]),
-        ]),
-        html.h3([], [
+        html.h1([], [html.text(title)]),
+        html.p([], [
           html.text(
             "You've completed the tutorial, well done! You're ready to start playing now.",
           ),

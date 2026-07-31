@@ -478,7 +478,7 @@ fn send_outcome_to_server(model: Model) -> Effect(Message) {
 pub fn view(model: Model) -> Element(Message) {
   html.main([attribute.class("center stack")], [
     html.div([attribute.class("center")], [
-      html.h1([], [html.text("Hashi")]),
+      html.h1([], [html.text("🏝️ Hashi")]),
       html.h2([], [html.text(pretty_date(model.puzzle_day))]),
     ]),
     hashi_grid.view(model.grid)
@@ -486,7 +486,7 @@ pub fn view(model: Model) -> Element(Message) {
     case hashi_grid.current_solution(model.grid).outcome {
       Ok(_) | Error(hashi.IslandsHaveWrongBridges(..)) -> element.none()
       Error(hashi.DisjointGroups(sets)) ->
-        html.h3([], [
+        html.p([], [
           html.text(
             "This is not a valid solution, there are "
             <> int.to_string(list.length(sets))
@@ -499,7 +499,7 @@ pub fn view(model: Model) -> Element(Message) {
 }
 
 fn button_controls(model: Model) -> Element(Message) {
-  let time = html.h3([], [html.text(pretty_elapsed_time(model))])
+  let time = html.p([], [html.text(pretty_elapsed_time(model))])
   case hashi_grid.is_complete(model.grid) {
     False -> {
       let undo = case hashi_grid.is_complete(model.grid) {
@@ -536,7 +536,7 @@ fn button_controls(model: Model) -> Element(Message) {
         html.button([attribute.class("share"), ..attributes], [html.text(text)])
       html.div([attribute.class("center stack-s")], [
         html.div([attribute.class("button-group")], [time, share]),
-        html.h3([], [html.text(pretty_missing_time(model))]),
+        html.p([], [html.text(pretty_missing_time(model))]),
       ])
     }
   }

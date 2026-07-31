@@ -65,6 +65,12 @@ h1 {
     font-size: var(--s2);
 }
 
+p,
+h3 {
+    font-size: 1.17em;
+    font-weight: bold;
+}
+
 button,
 .button {
     --button-colour: var(--bridge-colour);
