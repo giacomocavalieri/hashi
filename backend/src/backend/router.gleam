@@ -13,6 +13,8 @@ import wisp.{type Request, type Response}
 
 // TODO:
 // -[ ] add a route to get the raw data of the puzzle
+// -[ ] add a route to solve old puzzles
+// -[ ] add button to remove all bridges
 
 const tutorial_cookie = "tutorial"
 

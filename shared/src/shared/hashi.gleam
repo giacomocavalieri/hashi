@@ -10,7 +10,6 @@ import gleam/set.{type Set}
 import prng/random
 
 // TODO) add an option to allow generating loops
-// TODO) add an option to check a solution
 
 /// Creates a new set of options to generate a hashiwokakero game.
 /// By default a random seed is chosen, and single and double bridges are
