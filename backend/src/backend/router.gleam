@@ -95,6 +95,9 @@ pub fn daily_puzzle(_req: Request, cache: daily_puzzle.Cache) -> Response {
 fn save_time(req: wisp.Request, context: Context) -> wisp.Response {
   use body <- wisp.require_string_body(req)
 
+  // I'm being pretty liberal with the asserting, it's totally fine for such a
+  // small app and any of these errors should only happen if someone is messing
+  // with the API not using the client app.
   let assert Ok(daily_hashi_app.Outcome(day:, seconds:)) =
     json.parse(body, daily_hashi_app.outcome_decoder())
 

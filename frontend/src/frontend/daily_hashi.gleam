@@ -271,8 +271,16 @@ fn outcome_to_json(outcome: Outcome) -> Json {
 
 pub fn outcome_decoder() -> Decoder(Outcome) {
   use day <- decode.field("day", date_decoder())
-  use seconds <- decode.field("seconds", decode.int)
+  use seconds <- decode.field("seconds", seconds_decoder())
   decode.success(Outcome(day:, seconds:))
+}
+
+fn seconds_decoder() -> Decoder(Int) {
+  use seconds <- decode.then(decode.int)
+  case seconds > 0 {
+    True -> decode.success(seconds)
+    False -> decode.failure(1, "PositiveInt")
+  }
 }
 
 // UPDATE ----------------------------------------------------------------------
