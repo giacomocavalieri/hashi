@@ -48,6 +48,10 @@ pub fn layout(body: List(Element(_))) -> String {
       ]),
       meta_og("og:title", "🏝️ Play Hashi"),
       meta_og("og:description", "Play a new Hashi puzzle every day!"),
+      html.link([
+        attribute.rel("icon"),
+        attribute.href("/static/favicon.svg"),
+      ]),
     ]),
     html.body([], body),
   ])
