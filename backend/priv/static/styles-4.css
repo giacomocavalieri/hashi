@@ -63,6 +63,7 @@ table {
 h1 {
     text-transform: uppercase;
     font-size: var(--s2);
+    text-align: center;
 }
 
 p,
