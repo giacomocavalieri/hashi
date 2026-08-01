@@ -50,7 +50,15 @@ export async function do_share(title, message, on_shared) {
       await navigator.share({ title, text: message });
       on_shared(false);
     } catch (exception) {
-      console.log(exception);
+      // If for some reason sharing with the share API fails (for example we
+      // might be missing the permission), we try and fallback to the clipboard
+      // api.
+      try {
+        await navigator.clipboard.writeText(message);
+        on_shared(true);
+      } catch (exception) {
+        console.log(exception);
+      }
     }
   }
 }
