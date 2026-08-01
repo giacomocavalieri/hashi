@@ -33,6 +33,8 @@ pub fn middleware(
   handle_request(req)
 }
 
+const description = "Play a new Hashi puzzle every day!"
+
 pub fn layout(body: List(Element(_))) -> String {
   html.html([attribute.lang("en")], [
     html.head([], [
@@ -41,13 +43,14 @@ pub fn layout(body: List(Element(_))) -> String {
         attribute.href("/static/styles-3.css"),
         attribute.rel("stylesheet"),
       ]),
+      html.meta([attribute.name("description"), attribute.content(description)]),
       html.meta([attribute.charset("utf-8")]),
       html.meta([
         attribute.name("viewport"),
         attribute.content("width=device-width, initial-scale=1"),
       ]),
       meta_og("og:title", "🏝️ Play Hashi"),
-      meta_og("og:description", "Play a new Hashi puzzle every day!"),
+      meta_og("og:description", description),
       html.link([
         attribute.rel("icon"),
         attribute.href("/static/favicon.svg"),
@@ -55,7 +58,7 @@ pub fn layout(body: List(Element(_))) -> String {
     ]),
     html.body([], body),
   ])
-  |> element.to_string
+  |> element.to_document_string
 }
 
 fn meta_og(name: String, content: String) -> Element(_) {
