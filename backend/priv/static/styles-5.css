@@ -78,6 +78,9 @@ button,
     color: var(--button-colour);
     cursor: pointer;
 
+    user-select: none;
+    -webkit-user-select: none;
+
     text-decoration: none;
     text-transform: uppercase;
     font-size: var(--s0);
