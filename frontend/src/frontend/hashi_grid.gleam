@@ -410,7 +410,7 @@ pub fn view(model: Model) -> Element(Message) {
     use islands, y <- int.range(from: 0, to: height, with: [])
     use islands, x <- int.range(from: 0, to: width, with: islands)
     case hashi.has_island(model.puzzle, #(x, y)) {
-      True -> [view_island_hitbox(#(x, y)), ..islands]
+      True -> [view_island_hitbox(model, #(x, y)), ..islands]
       False -> islands
     }
   }
@@ -645,27 +645,45 @@ fn view_bridge(
 /// This will act as a bigger hitbox to drop a bridge onto; from playing this on
 /// mobile, it would otherwise feel awkard having to drop the bridge exactly
 /// onto an island rather than close to it.
-fn view_island_hitbox(island: #(Int, Int)) -> Element(Message) {
+///
+/// We only draw the hitbox if the island can be selected or a bridge can be
+/// dropped to it.
+fn view_island_hitbox(model: Model, island: #(Int, Int)) -> Element(Message) {
   let #(x, y) = island
   let #(cx, cy) = island_center(island)
 
-  svg.g(
-    [
-      attribute.data("x", int.to_string(x)),
-      attribute.data("y", int.to_string(y)),
-      attribute.class("hashi-island-hitbox"),
-    ],
-    [
-      svg.circle([
-        attribute.attribute("cx", int.to_string(cx)),
-        attribute.attribute("cy", int.to_string(cy)),
-        attribute.attribute("r", float.to_string(int.to_float(radius) *. 2.0)),
-        attribute.attribute("fill", "transparent"),
-        attribute.attribute("stroke-width", "0"),
-        attribute.attribute("stroke", "transparent"),
-      ]),
-    ],
-  )
+  let draw_hitbox = fn(multiplier) {
+    svg.g(
+      [
+        attribute.data("x", int.to_string(x)),
+        attribute.data("y", int.to_string(y)),
+        attribute.class("hashi-island-hitbox"),
+      ],
+      [
+        svg.circle([
+          attribute.attribute("cx", int.to_string(cx)),
+          attribute.attribute("cy", int.to_string(cy)),
+          attribute.attribute(
+            "r",
+            float.to_string(int.to_float(radius) *. multiplier),
+          ),
+          attribute.attribute("fill", "transparent"),
+          attribute.attribute("stroke-width", "0"),
+          attribute.attribute("stroke", "transparent"),
+        ]),
+      ],
+    )
+  }
+
+  case model.start_island {
+    Some(start) ->
+      case can_connect(model, start, island) {
+        Ok(_) -> draw_hitbox(3.0)
+        Error(_) -> element.none()
+      }
+    // All islands can be selected at this point.
+    None -> draw_hitbox(2.0)
+  }
 }
 
 fn view_island(model: Model, island: #(Int, Int)) -> Element(Message) {
