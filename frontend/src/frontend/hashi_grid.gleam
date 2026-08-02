@@ -526,40 +526,36 @@ fn view_bridge(
   bridge: Bridge,
   attributes: List(Attribute(message)),
 ) -> Element(message) {
+  let margin = radius + stroke_width
+  let min_x = int.min(x1, x2)
+  let min_y = int.min(y1, y2)
+  let delta_x = int.absolute_value(x1 - x2)
+  let delta_y = int.absolute_value(y1 - y2)
+  let hitbox = case x1 == x2 {
+    True ->
+      svg.rect([
+        attribute.attribute("fill", "transparent"),
+        attribute.attribute("stroke", "transparent"),
+        attribute.attribute("x", int.to_string(min_x - 3 * stroke_width)),
+        attribute.attribute("y", int.to_string(min_y + margin)),
+        attribute.width(6 * stroke_width),
+        attribute.height(delta_y - 2 * margin),
+      ])
+
+    False ->
+      svg.rect([
+        attribute.attribute("fill", "transparent"),
+        attribute.attribute("stroke", "transparent"),
+        attribute.attribute("x", int.to_string(min_x + margin)),
+        attribute.attribute("y", int.to_string(min_y - 3 * stroke_width)),
+        attribute.width(delta_x - 2 * margin),
+        attribute.height(6 * stroke_width),
+      ])
+  }
+
   let bridge_lines = case bridge {
     hashi.Single -> [
-      case x1 == x2 {
-        True ->
-          svg.rect([
-            attribute.attribute("fill", "transparent"),
-            attribute.attribute("stroke", "transparent"),
-            attribute.attribute(
-              "x",
-              int.to_string(int.min(x1, x2) - 3 * stroke_width),
-            ),
-            attribute.attribute("y", int.to_string(int.min(y1, y2))),
-            attribute.attribute("width", int.to_string(6 * stroke_width)),
-            attribute.attribute(
-              "height",
-              int.to_string(int.absolute_value(y1 - y2)),
-            ),
-          ])
-        False ->
-          svg.rect([
-            attribute.attribute("fill", "transparent"),
-            attribute.attribute("stroke", "transparent"),
-            attribute.attribute("x", int.to_string(int.min(x1, x2))),
-            attribute.attribute(
-              "y",
-              int.to_string(int.min(y1, y2) - 3 * stroke_width),
-            ),
-            attribute.attribute(
-              "width",
-              int.to_string(int.absolute_value(x1 - x2)),
-            ),
-            attribute.attribute("height", int.to_string(6 * stroke_width)),
-          ])
-      },
+      hitbox,
       svg.line([
         attribute.attribute("x1", int.to_string(x1)),
         attribute.attribute("y1", int.to_string(y1)),
@@ -570,20 +566,7 @@ fn view_bridge(
     ]
 
     hashi.Double if x1 == x2 -> [
-      svg.rect([
-        attribute.attribute("fill", "transparent"),
-        attribute.attribute("stroke", "transparent"),
-        attribute.attribute(
-          "x",
-          int.to_string(int.min(x1, x2) - 3 * stroke_width),
-        ),
-        attribute.attribute("y", int.to_string(int.min(y1, y2))),
-        attribute.attribute("width", int.to_string(6 * stroke_width)),
-        attribute.attribute(
-          "height",
-          int.to_string(int.absolute_value(y1 - y2)),
-        ),
-      ]),
+      hitbox,
       svg.line([
         attribute.attribute("x1", int.to_string(x1 - stroke_width)),
         attribute.attribute("y1", int.to_string(y1)),
@@ -598,17 +581,7 @@ fn view_bridge(
       ]),
     ]
     hashi.Double -> [
-      svg.rect([
-        attribute.attribute("fill", "transparent"),
-        attribute.attribute("stroke", "transparent"),
-        attribute.attribute("x", int.to_string(int.min(x1, x2))),
-        attribute.attribute(
-          "y",
-          int.to_string(int.min(y1, y2) - 3 * stroke_width),
-        ),
-        attribute.attribute("width", int.to_string(int.absolute_value(x1 - x2))),
-        attribute.attribute("height", int.to_string(6 * stroke_width)),
-      ]),
+      hitbox,
       svg.line([
         attribute.attribute("x1", int.to_string(x1)),
         attribute.attribute("y1", int.to_string(y1 - stroke_width)),
