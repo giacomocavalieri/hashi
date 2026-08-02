@@ -424,7 +424,7 @@ pub fn view(model: Model) -> Element(Message) {
     // this trick.
     use <- bool.guard(when: x < other_x || y < other_y, return: bridges)
     let bridge =
-      view_bridge_between_islands(#(x, y), #(other_x, other_y), bridge)
+      view_bridge_between_islands(model, #(x, y), #(other_x, other_y), bridge)
     [bridge, ..bridges]
   }
 
@@ -439,13 +439,13 @@ pub fn view(model: Model) -> Element(Message) {
         Error(_) -> {
           let #(cx, cy) = model.cursor
           let #(x1, y1) = island_center(one)
-          view_bridge(x1, cx, y1, cy, hashi.Single, [])
+          view_bridge(x1, cx, y1, cy, hashi.Single, False, [])
         }
 
         Ok(_) -> {
           let #(x1, y1) = island_center(one)
           let #(x2, y2) = island_center(other)
-          view_bridge(x1, x2, y1, y2, hashi.Single, [])
+          view_bridge(x1, x2, y1, y2, hashi.Single, False, [])
         }
       }
 
@@ -453,7 +453,7 @@ pub fn view(model: Model) -> Element(Message) {
     Some(island), None -> {
       let #(cx, cy) = model.cursor
       let #(x1, y1) = island_center(island)
-      view_bridge(x1, cx, y1, cy, hashi.Single, [])
+      view_bridge(x1, cx, y1, cy, hashi.Single, False, [])
     }
   }
 
@@ -500,14 +500,20 @@ pub fn view(model: Model) -> Element(Message) {
 }
 
 fn view_bridge_between_islands(
+  model: Model,
   island: #(Int, Int),
   other_island: #(Int, Int),
   bridge: Bridge,
 ) -> Element(Message) {
   let #(x1, y1) = island_center(island)
   let #(x2, y2) = island_center(other_island)
-  view_bridge(x1, x2, y1, y2, bridge, [
-    event.on_click(UserClickedBridge(island, other_island)),
+  view_bridge(x1, x2, y1, y2, bridge, True, [
+    // If there's an active island we don't want to trigger bridge events if we
+    // inadvertently click on them!
+    case model.start_island {
+      Some(_) -> attribute.none()
+      None -> event.on_click(UserClickedBridge(island, other_island))
+    },
   ])
 }
 
@@ -524,6 +530,7 @@ fn view_bridge(
   y1: Int,
   y2: Int,
   bridge: Bridge,
+  hitbox: Bool,
   attributes: List(Attribute(message)),
 ) -> Element(message) {
   let margin = radius + stroke_width
@@ -532,6 +539,7 @@ fn view_bridge(
   let delta_x = int.absolute_value(x1 - x2)
   let delta_y = int.absolute_value(y1 - y2)
   let hitbox = case x1 == x2 {
+    _ if !hitbox -> element.none()
     True ->
       svg.rect([
         attribute.attribute("fill", "transparent"),
