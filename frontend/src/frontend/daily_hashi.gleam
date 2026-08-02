@@ -5,7 +5,6 @@ import gleam/dynamic/decode.{type Decoder}
 import gleam/float
 import gleam/int
 import gleam/json.{type Json}
-import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/set.{type Set}
@@ -502,12 +501,10 @@ pub fn view(model: Model) -> Element(Message) {
       |> element.map(GridProducedMessage),
     case hashi_grid.current_solution(model.grid).outcome {
       Ok(_) | Error(hashi.IslandsHaveWrongBridges(..)) -> element.none()
-      Error(hashi.DisjointGroups(sets)) ->
+      Error(hashi.DisjointGroups(_)) ->
         html.p([], [
           html.text(
-            "This is not a valid solution, there are "
-            <> int.to_string(list.length(sets))
-            <> " groups of islands that are not connected to each other.",
+            "This is not a valid solution, there is a group of islands that is not connected to all the other ones.",
           ),
         ])
     },

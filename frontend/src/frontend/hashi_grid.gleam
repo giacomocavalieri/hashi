@@ -697,10 +697,19 @@ fn view_island(model: Model, island: #(Int, Int)) -> Element(Message) {
             Ok(hashi.WrongBridges(..)) -> attribute.none()
           }
 
-        // If we get to this error it means that all islands are complete
-        // already and they're only not connected properly.
-        // So all islands will be marked as complete.
-        Error(hashi.DisjointGroups(..)) -> attribute.class("complete")
+        // If we get to this error it means that all islands have the correct
+        // number of bridges, but there's groups that are disjoint.
+        // To make it easy to spot which islands are not connected we're gonna
+        // colour all the ones from one of the groups in red!
+        Error(hashi.DisjointGroups([first_group, ..])) ->
+          case set.contains(first_group, island) {
+            True -> attribute.class("unreachable")
+            False -> attribute.class("complete")
+          }
+
+        Error(hashi.DisjointGroups([])) -> {
+          attribute.class("complete")
+        }
         Ok(Nil) -> attribute.class("complete")
       }
 

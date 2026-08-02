@@ -25,7 +25,7 @@
 
     --complete-island-colour: #89af47;
     --wrong-island-colour: #d85679;
-
+    --unreachable-island-colour: #447fd8;
     --dark-green-colour: #53793e;
 
     --transition-time: 0.15s;
@@ -165,6 +165,10 @@ button:disabled,
 
     &.wrong {
         fill: var(--wrong-island-colour);
+    }
+
+    &.unreachable {
+        fill: var(--unreachable-island-colour);
     }
 
     &.complete {
