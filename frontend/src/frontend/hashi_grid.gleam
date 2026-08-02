@@ -478,7 +478,7 @@ pub fn view(model: Model) -> Element(Message) {
         "pointermove",
         decode.map(decode.dynamic, UserMovedPointerOverGrid),
       )
-        |> event.throttle(15),
+        |> event.throttle(5),
       attribute.attribute(
         "viewBox",
         int.to_string(-stroke_width)
@@ -678,11 +678,11 @@ fn view_island_hitbox(model: Model, island: #(Int, Int)) -> Element(Message) {
   case model.start_island {
     Some(start) ->
       case can_connect(model, start, island) {
-        Ok(_) -> draw_hitbox(3.0)
+        Ok(_) -> draw_hitbox(3.5)
         Error(_) -> element.none()
       }
     // All islands can be selected at this point.
-    None -> draw_hitbox(2.0)
+    None -> draw_hitbox(3.5)
   }
 }
 
