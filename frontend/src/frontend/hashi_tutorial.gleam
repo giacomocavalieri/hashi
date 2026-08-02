@@ -186,7 +186,7 @@ pub fn init(_nil: Nil) -> #(Model, Effect(Message)) {
 
   let model =
     Model(
-      steps: list.index_map(steps, fn(step, index) { #(index, step) }),
+      steps: list.index_map(steps, fn(step, index) { #(index + 1, step) }),
       total_steps: list.length(steps),
     )
 
