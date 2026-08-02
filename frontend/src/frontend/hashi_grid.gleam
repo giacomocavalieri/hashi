@@ -236,6 +236,18 @@ pub fn current_solution(model: Model) -> Solution {
   history.current(model.solutions)
 }
 
+pub fn has_bridges(model: Model) -> Bool {
+  !set.is_empty(history.current(model.solutions).bridges)
+}
+
+pub fn delete_all_bridges(model: Model) -> Model {
+  let outcome = hashi.check(model.puzzle, dict.new())
+  let new_solution =
+    Solution(outcome:, connections: dict.new(), bridges: set.new())
+  let solutions = history.push(model.solutions, new_solution)
+  Model(..model, solutions:)
+}
+
 // UPDATE ----------------------------------------------------------------------
 
 pub type Message {

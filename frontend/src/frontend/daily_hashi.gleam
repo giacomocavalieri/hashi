@@ -297,6 +297,7 @@ pub type Message {
   RsvpPostedOutcome
 
   GridProducedMessage(hashi_grid.Message)
+  UserClickedDeleteAllBridges
 }
 
 fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
@@ -350,6 +351,13 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
     UserClickedRedo -> {
       use <- skip_if_complete(model)
       let model = Model(..model, grid: hashi_grid.step_forward(model.grid))
+      let effect = save_state(model)
+      #(model, effect)
+    }
+    UserClickedDeleteAllBridges -> {
+      use <- skip_if_complete(model)
+      let model =
+        Model(..model, grid: hashi_grid.delete_all_bridges(model.grid))
       let effect = save_state(model)
       #(model, effect)
     }
@@ -511,35 +519,45 @@ fn button_controls(model: Model) -> Element(Message) {
   let time = html.p([], [html.text(pretty_elapsed_time(model))])
   case hashi_grid.is_complete(model.grid) {
     False -> {
-      let undo = case hashi_grid.is_complete(model.grid) {
-        True -> element.none()
-        False ->
-          html.button(
-            [
-              event.on_click(UserClickedUndo),
-              attribute.disabled(!hashi_grid.can_step_back(model.grid)),
-            ],
-            [html.text("undo")],
-          )
-      }
-      let redo = case hashi_grid.is_complete(model.grid) {
-        True -> element.none()
-        False ->
-          html.button(
-            [
-              event.on_click(UserClickedRedo),
-              attribute.disabled(!hashi_grid.can_step_forward(model.grid)),
-            ],
-            [html.text("redo")],
-          )
-      }
-      html.div([attribute.class("button-group")], [undo, time, redo])
+      let undo =
+        html.button(
+          [
+            event.on_click(UserClickedUndo),
+            attribute.disabled(!hashi_grid.can_step_back(model.grid)),
+          ],
+          [html.text("undo")],
+        )
+      let redo =
+        html.button(
+          [
+            event.on_click(UserClickedRedo),
+            attribute.disabled(!hashi_grid.can_step_forward(model.grid)),
+          ],
+          [html.text("redo")],
+        )
+      let delete_all_bridges =
+        html.button(
+          [
+            event.on_click(UserClickedDeleteAllBridges),
+            attribute.disabled(!hashi_grid.has_bridges(model.grid)),
+          ],
+          [html.text("Delete all bridges")],
+        )
+
+      html.div([attribute.class("center stack-s")], [
+        html.div([attribute.class("button-group")], [
+          undo,
+          time,
+          redo,
+        ]),
+        delete_all_bridges,
+      ])
     }
     True -> {
       let #(attributes, text) = case model.share {
         Some(Clipboard) -> #([attribute.class("success")], "copied!")
         Some(RichShare) -> #([attribute.class("success")], "shared!")
-        None -> #([event.on_click(UserClickedShare)], "share")
+        None -> #([event.on_click(UserClickedShare)], "Share")
       }
       let share =
         html.button([attribute.class("share"), ..attributes], [html.text(text)])
