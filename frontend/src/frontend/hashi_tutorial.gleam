@@ -92,7 +92,7 @@ fn how_to_remove_a_bridge() -> Step {
   let third = #(1, 5)
   let fourth = #(5, 5)
   Step(
-    "You can click on a bridge to remove it.",
+    "You can click on a bridge to remove it. Remove the excess bridges.",
     grid: hashi_grid.init(hashi_grid.InitState(
       puzzle: hashi.from_islands_and_connections(
         width: 7,
