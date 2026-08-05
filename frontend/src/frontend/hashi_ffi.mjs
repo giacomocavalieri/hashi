@@ -10,30 +10,6 @@ export function do_after(milliseconds, run) {
   return undefined;
 }
 
-export function do_handle_moved_pointer_event(
-  event,
-  on_island_enter,
-  on_island_exit,
-  on_point,
-) {
-  const [svg] = document.getElementsByClassName("hashi-grid");
-  const point = svg.createSVGPoint();
-  point.x = event.x;
-  point.y = event.y;
-  const { x, y } = point.matrixTransform(svg.getScreenCTM().inverse());
-  on_point([x, y]);
-
-  const island = document
-    .elementFromPoint(event.x, event.y)
-    ?.closest(".hashi-island-hitbox");
-
-  if (island == null) {
-    on_island_exit();
-  } else {
-    on_island_enter([parseInt(island.dataset.x), parseInt(island.dataset.y)]);
-  }
-}
-
 export async function do_share(title, message, on_shared) {
   if (!navigator.share) {
     // If the share API is not available in the browser, then we fall back to

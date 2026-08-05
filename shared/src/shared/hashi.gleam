@@ -558,7 +558,7 @@ fn connect_islands(
   }
 }
 
-type Direction {
+pub type Direction {
   Up
   Down
   Left

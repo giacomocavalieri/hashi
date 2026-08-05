@@ -40,7 +40,7 @@ pub fn layout(body: List(Element(_))) -> String {
     html.head([], [
       html.title([], "Hashi"),
       html.link([
-        attribute.href("/static/styles-6.css"),
+        attribute.href("/static/styles-7.css"),
         attribute.rel("stylesheet"),
       ]),
       html.meta([attribute.name("description"), attribute.content(description)]),

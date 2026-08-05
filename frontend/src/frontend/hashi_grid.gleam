@@ -1,7 +1,6 @@
 import frontend/history.{type History}
 import gleam/bool
 import gleam/dict.{type Dict}
-import gleam/dynamic.{type Dynamic}
 import gleam/dynamic/decode
 import gleam/float
 import gleam/int
@@ -14,7 +13,9 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/element/svg
 import lustre/event
-import shared/hashi.{type Bridge, type InvalidSolution, type Puzzle}
+import shared/hashi.{
+  type Bridge, type Direction, type InvalidSolution, type Puzzle,
+}
 
 // MODEL -----------------------------------------------------------------------
 
@@ -26,19 +27,22 @@ pub opaque type Model {
     solutions: History(Solution),
     /// The position of the cursor, in the coordinate space of the svg grid
     /// holding the puzzle.
-    cursor: #(Int, Int),
+    pointer: #(Int, Int),
     /// When drawing a bridge from one island to another, this contains the
     /// coordinates of the starting island.
-    start_island: Option(#(Int, Int)),
-    /// When drawing a bridge from one island to another, this contains the
-    /// coordinates of the destination island.
-    target_island: Option(#(Int, Int)),
+    bridge_start: Option(BridgeStart),
   )
 }
 
-pub type ShareMedium {
-  Clipboard
-  RichShare
+type BridgeStart {
+  BridgeStart(
+    /// This is the coordinates of the island from which a bridge is starting.
+    island: #(Int, Int),
+    /// These are the coordinates of where the cursor where when we started
+    /// drawing the bridge. We need this to know where the cursor is moving
+    /// (up/down/left/right).
+    point: #(Int, Int),
+  )
 }
 
 pub type Solution {
@@ -67,10 +71,9 @@ pub fn init(state: InitState) -> Model {
   let outcome = hashi.check(puzzle, connections)
   let model =
     Model(
-      cursor: #(0, 0),
+      pointer: #(0, 0),
       puzzle:,
-      start_island: None,
-      target_island: None,
+      bridge_start: None,
       solutions: history.new(
         Solution(outcome:, connections:, bridges: {
           use cells, start, connections <- dict.fold(connections, set.new())
@@ -163,7 +166,12 @@ fn can_connect(
   let #(x, y) = selected
   let #(other_x, other_y) = point
 
-  use <- bool.guard(when: selected == point, return: Error(Nil))
+  use <- bool.guard(
+    when: selected == point
+      || !hashi.has_island(model.puzzle, point)
+      || !hashi.has_island(model.puzzle, selected),
+    return: Error(Nil),
+  )
 
   let solution = history.current(model.solutions)
   let bridge = {
@@ -251,20 +259,9 @@ pub fn delete_all_bridges(model: Model) -> Model {
 // UPDATE ----------------------------------------------------------------------
 
 pub type Message {
-  UserPressedOnIsland(point: #(Int, Int))
-  UserStoppedPressing
-
-  /// This catches all "pointermove" events that happen on the hashi grid.
-  /// This is needed to check which island we're hovering, and where (relative
-  /// to the grid) the cursor is.
-  /// To find the hovered island, and where the cursor is over the grid the
-  /// event will need to be handled in an effect that can read the DOM, so this
-  /// just wraps the event object to be handled in JavaScript land.
-  UserMovedPointerOverGrid(event: Dynamic)
-  PointerEnteredIsland(point: #(Int, Int))
-  PointerLeftIsland
-  PointerMovedToPoint(point: #(Int, Int))
-
+  UserPressedOnIsland(island: #(Int, Int), pointer: #(Int, Int))
+  UserStoppedPressing(pointer: #(Int, Int))
+  PointerMoved(pointer: #(Int, Int))
   UserClickedBridge(between: #(Int, Int), and: #(Int, Int))
 }
 
@@ -278,27 +275,31 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       #(model, effect)
     }
 
-    UserPressedOnIsland(point:) ->
+    UserPressedOnIsland(island:, pointer:) -> {
       // If we press on an island and there was an already selected one, then
       // we have to connect the two islands.
-      case model.start_island {
-        Some(start) -> {
-          let model = try_connect(model, start, point)
+      let model = Model(..model, pointer:)
+      case model.bridge_start {
+        Some(BridgeStart(island: start, ..)) -> {
+          let model = try_connect(model, start, island)
           let effect = effect.none()
           #(model, effect)
         }
 
         None -> {
-          let model = Model(..model, start_island: Some(point))
+          let bridge_start = Some(BridgeStart(island:, point: pointer))
+          let model = Model(..model, bridge_start:)
           let effect = effect.none()
           #(model, effect)
         }
       }
+    }
 
-    UserStoppedPressing -> {
-      case model.start_island, model.target_island {
-        None, _ | _, None -> {
-          let model = Model(..model, start_island: None, target_island: None)
+    UserStoppedPressing(pointer:) -> {
+      let model = Model(..model, pointer:)
+      case model.bridge_start {
+        None -> {
+          let model = Model(..model, bridge_start: None)
           let effect = effect.none()
           #(model, effect)
         }
@@ -306,45 +307,111 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
         // If we stop start and stop pressing on the same island where we
         // started that counts as a click. We select the island that has just
         // been clicked as the start and wait for the destination to be clicked.
-        Some(start), Some(end) if start == end -> {
-          let model = Model(..model, target_island: None)
-          let effect = effect.none()
-          #(model, effect)
-        }
-
-        Some(start), Some(end) -> {
-          let model = try_connect(model, start, end)
-          let effect = effect.none()
-          #(model, effect)
+        Some(BridgeStart(island:, point:)) -> {
+          let squared_distance = {
+            let dx = model.pointer.0 - point.0
+            let dy = model.pointer.1 - point.1
+            dx * dx + dy * dy
+          }
+          case squared_distance == 0 {
+            True -> #(model, effect.none())
+            False -> {
+              let direction = direction(from: point, to: model.pointer)
+              case try_connect_in_direction(model, island, direction) {
+                Error(_) -> {
+                  let model = Model(..model, bridge_start: None)
+                  let effect = effect.none()
+                  #(model, effect)
+                }
+                Ok(model) -> {
+                  let effect = effect.none()
+                  #(model, effect)
+                }
+              }
+            }
+          }
         }
       }
     }
 
-    PointerEnteredIsland(island) -> {
-      let model = case model.start_island {
-        Some(_) -> Model(..model, target_island: Some(island))
-        None -> model
+    PointerMoved(pointer:) -> {
+      let model = Model(..model, pointer:)
+      let effect = effect.none()
+      #(model, effect)
+    }
+  }
+}
+
+/// If there's an island that can be connected to the given one, going in the
+/// given direction, it will be returned.
+fn try_connect_in_direction(
+  model: Model,
+  of island: #(Int, Int),
+  going direction: Direction,
+) -> Result(Model, Nil) {
+  use candidate <- result.try(neighbour(model, of: island, going: direction))
+  Ok(try_connect(model, island, candidate))
+}
+
+fn neighbour(
+  model: Model,
+  of island: #(Int, Int),
+  going direction: Direction,
+) -> Result(#(Int, Int), Nil) {
+  let #(x, y) = island
+  let occupied = fn(x, y) { hashi.has_island(model.puzzle, #(x, y)) }
+  case direction {
+    hashi.Down -> {
+      let height = hashi.height(model.puzzle)
+      range_first(from: y + 1, to: height - 1, so_that: occupied(x, _))
+      |> result.map(fn(y) { #(x, y) })
+    }
+    hashi.Left ->
+      range_first(from: x - 1, to: 0, so_that: occupied(_, y))
+      |> result.map(fn(x) { #(x, y) })
+    hashi.Up ->
+      range_first(from: y - 1, to: 0, so_that: occupied(x, _))
+      |> result.map(fn(y) { #(x, y) })
+    hashi.Right -> {
+      let width = hashi.width(model.puzzle)
+      range_first(from: x + 1, to: width - 1, so_that: occupied(_, y))
+      |> result.map(fn(x) { #(x, y) })
+    }
+  }
+}
+
+fn direction(from start: #(Int, Int), to end: #(Int, Int)) -> Direction {
+  let #(x_start, y_start) = start
+  let #(x_end, y_end) = end
+  case int.to_float(y_start - y_end) /. int.to_float(x_start - x_end) {
+    _ if y_start == y_end && x_start < x_end -> hashi.Right
+    _ if y_start == y_end -> hashi.Left
+    _ if x_start == x_end && y_start < y_end -> hashi.Down
+    _ if x_start == x_end -> hashi.Up
+
+    slope if slope >=. 1.0 ->
+      case x_start < x_end {
+        True -> hashi.Down
+        False -> hashi.Up
       }
-      let effect = effect.none()
-      #(model, effect)
-    }
 
-    PointerLeftIsland -> {
-      let model = Model(..model, target_island: None)
-      let effect = effect.none()
-      #(model, effect)
-    }
+    slope if slope >=. 0.0 ->
+      case x_start < x_end {
+        True -> hashi.Right
+        False -> hashi.Left
+      }
 
-    UserMovedPointerOverGrid(event:) -> {
-      let effect = handle_moved_pointer_event(event)
-      #(model, effect)
-    }
+    slope if slope >=. -1.0 ->
+      case x_start < x_end {
+        True -> hashi.Right
+        False -> hashi.Left
+      }
 
-    PointerMovedToPoint(point:) -> {
-      let model = Model(..model, cursor: point)
-      let effect = effect.none()
-      #(model, effect)
-    }
+    _slope ->
+      case x_start < x_end {
+        True -> hashi.Up
+        False -> hashi.Down
+      }
   }
 }
 
@@ -357,7 +424,7 @@ fn try_connect(model: Model, start: #(Int, Int), end: #(Int, Int)) -> Model {
     Ok(None) -> remove_one_bridge(model, start, end)
     Error(_) -> model
   }
-  Model(..model, start_island: None, target_island: None)
+  Model(..model, bridge_start: None)
 }
 
 fn skip_if_complete(
@@ -371,24 +438,6 @@ fn skip_if_complete(
 }
 
 // EFFECTS ---------------------------------------------------------------------
-
-fn handle_moved_pointer_event(event: Dynamic) -> Effect(Message) {
-  use dispatch <- effect.from
-  do_handle_moved_pointer_event(
-    event,
-    on_island_enter: fn(island) { dispatch(PointerEnteredIsland(island)) },
-    on_island_exit: fn() { dispatch(PointerLeftIsland) },
-    on_point: fn(point) { dispatch(PointerMovedToPoint(point)) },
-  )
-}
-
-@external(javascript, "./hashi_ffi.mjs", "do_handle_moved_pointer_event")
-fn do_handle_moved_pointer_event(
-  event: Dynamic,
-  on_island_enter on_island_enter: fn(#(Int, Int)) -> Nil,
-  on_island_exit on_island_exit: fn() -> Nil,
-  on_point on_point: fn(#(Int, Int)) -> Nil,
-) -> Nil
 
 // VIEW ------------------------------------------------------------------------
 
@@ -406,15 +455,6 @@ pub fn view(model: Model) -> Element(Message) {
     [view_island(model, #(x, y)), ..islands]
   }
 
-  let islands_hitboxes = {
-    use islands, y <- int.range(from: 0, to: height, with: [])
-    use islands, x <- int.range(from: 0, to: width, with: islands)
-    case hashi.has_island(model.puzzle, #(x, y)) {
-      True -> [view_island_hitbox(model, #(x, y)), ..islands]
-      False -> islands
-    }
-  }
-
   let solution = history.current(model.solutions)
   let bridges = {
     use bridges, #(x, y), connections <- dict.fold(solution.connections, [])
@@ -428,32 +468,33 @@ pub fn view(model: Model) -> Element(Message) {
     [bridge, ..bridges]
   }
 
-  let current_bridge = case model.start_island, model.target_island {
+  let current_bridge = case model.bridge_start {
     // If there's no start island selected then there's no bridge to be drawn.
-    None, _ -> element.none()
-    // If there's another island selected then we clip the bridge to that
-    // island, so it's immediately clear where it's gonna land even if it's a
-    // bit far from the actual island circle.
-    Some(one), Some(other) ->
-      case can_connect(model, one, other) {
-        Error(_) -> {
-          let #(cx, cy) = model.cursor
-          let #(x1, y1) = island_center(one)
-          view_bridge(x1, cx, y1, cy, hashi.Single, False, [])
-        }
-
-        Ok(_) -> {
-          let #(x1, y1) = island_center(one)
-          let #(x2, y2) = island_center(other)
-          view_bridge(x1, x2, y1, y2, hashi.Single, False, [])
+    None -> element.none()
+    // Otherwise we draw the bridge in the direction we're going.
+    Some(BridgeStart(island: start, point:)) -> {
+      let squared_distance = {
+        let dx = point.0 - model.pointer.0
+        let dy = point.1 - model.pointer.1
+        dx * dx + dy * dy
+      }
+      let direction = direction(point, model.pointer)
+      case neighbour(model, start, direction) {
+        _ if squared_distance == 0 -> element.none()
+        Error(_) -> element.none()
+        Ok(end) -> {
+          case can_connect(model, start, end) {
+            Error(_) -> element.none()
+            Ok(_) -> {
+              let #(x1, y1) = island_center(start)
+              let #(x2, y2) = island_center(end)
+              view_bridge(x1, x2, y1, y2, hashi.Single, False, [
+                attribute.class("current"),
+              ])
+            }
+          }
         }
       }
-
-    // Otherwise, we draw the bridge up to where the cursor is.
-    Some(island), None -> {
-      let #(cx, cy) = model.cursor
-      let #(x1, y1) = island_center(island)
-      view_bridge(x1, cx, y1, cy, hashi.Single, False, [])
     }
   }
 
@@ -469,15 +510,12 @@ pub fn view(model: Model) -> Element(Message) {
         Ok(_) -> attribute.class("complete")
         Error(_) -> attribute.none()
       },
-      event.on("pointerup", decode.success(UserStoppedPressing)),
-      event.on(
-        "pointerdown",
-        decode.map(decode.dynamic, UserMovedPointerOverGrid),
-      ),
-      event.on(
-        "pointermove",
-        decode.map(decode.dynamic, UserMovedPointerOverGrid),
-      )
+      pointer_event_decoder()
+        |> decode.map(UserStoppedPressing)
+        |> event.on("pointerup", _),
+      pointer_event_decoder()
+        |> decode.map(PointerMoved)
+        |> event.on("pointermove", _)
         |> event.throttle(5),
       attribute.attribute(
         "viewBox",
@@ -491,12 +529,17 @@ pub fn view(model: Model) -> Element(Message) {
       ),
     ],
     [
-      current_bridge,
-      element.fragment(islands_hitboxes),
       element.fragment(bridges),
+      current_bridge,
       element.fragment(islands),
     ],
   )
+}
+
+fn pointer_event_decoder() -> decode.Decoder(#(Int, Int)) {
+  use x <- decode.field("x", decode.float |> decode.map(float.round))
+  use y <- decode.field("y", decode.float |> decode.map(float.round))
+  decode.success(#(x, y))
 }
 
 fn view_bridge_between_islands(
@@ -510,7 +553,7 @@ fn view_bridge_between_islands(
   view_bridge(x1, x2, y1, y2, bridge, True, [
     // If there's an active island we don't want to trigger bridge events if we
     // inadvertently click on them!
-    case model.start_island {
+    case model.bridge_start {
       Some(_) -> attribute.none()
       None -> event.on_click(UserClickedBridge(island, other_island))
     },
@@ -622,63 +665,18 @@ fn view_bridge(
   )
 }
 
-/// This draws a transparent bigger island centered where the island should be.
-/// This will act as a bigger hitbox to drop a bridge onto; from playing this on
-/// mobile, it would otherwise feel awkard having to drop the bridge exactly
-/// onto an island rather than close to it.
-///
-/// We only draw the hitbox if the island can be selected or a bridge can be
-/// dropped to it.
-fn view_island_hitbox(model: Model, island: #(Int, Int)) -> Element(Message) {
-  let #(x, y) = island
-  let #(cx, cy) = island_center(island)
-
-  let draw_hitbox = fn(multiplier) {
-    svg.g(
-      [
-        attribute.data("x", int.to_string(x)),
-        attribute.data("y", int.to_string(y)),
-        attribute.class("hashi-island-hitbox"),
-      ],
-      [
-        svg.circle([
-          attribute.attribute("cx", int.to_string(cx)),
-          attribute.attribute("cy", int.to_string(cy)),
-          attribute.attribute(
-            "r",
-            float.to_string(int.to_float(radius) *. multiplier),
-          ),
-          attribute.attribute("fill", "transparent"),
-          attribute.attribute("stroke-width", "0"),
-          attribute.attribute("stroke", "transparent"),
-        ]),
-      ],
-    )
-  }
-
-  case model.start_island {
-    Some(start) ->
-      case can_connect(model, start, island) {
-        Ok(_) -> draw_hitbox(3.5)
-        Error(_) -> element.none()
-      }
-    // All islands can be selected at this point.
-    None -> draw_hitbox(3.5)
-  }
-}
-
 fn view_island(model: Model, island: #(Int, Int)) -> Element(Message) {
   case hashi.island_rank(model.puzzle, island) {
     Error(_) -> element.none()
     Ok(rank) -> {
-      let #(x, y) = island
       let #(cx, cy) = island_center(island)
-
-      let selectable = case model.start_island {
+      let selectable = case model.bridge_start {
         None -> attribute.class("selectable")
-        Some(other_point) if other_point == island -> attribute.class("selected")
-        Some(other_point) ->
-          case can_connect(model, island, other_point) {
+        Some(BridgeStart(island: other_island, ..)) if other_island == island ->
+          attribute.class("selected")
+
+        Some(BridgeStart(island: other_island, ..)) ->
+          case can_connect(model, island, other_island) {
             Error(_) -> attribute.class("disabled")
             Ok(_) -> attribute.class("selectable")
           }
@@ -716,11 +714,12 @@ fn view_island(model: Model, island: #(Int, Int)) -> Element(Message) {
         [
           attribute.class("hashi-island"),
           attribute.class("hashi-island-hitbox"),
-          event.on("pointerdown", decode.success(UserPressedOnIsland(island))),
+          event.on("pointerdown", {
+            use pointer <- decode.then(pointer_event_decoder())
+            decode.success(UserPressedOnIsland(island:, pointer:))
+          }),
           status,
           selectable,
-          attribute.data("x", int.to_string(x)),
-          attribute.data("y", int.to_string(y)),
         ],
         [
           svg.circle([
@@ -812,5 +811,29 @@ fn range_all_loop(
     True if current == end -> True
     True -> range_all_loop(current + delta, end, delta, predicate)
     False -> False
+  }
+}
+
+fn range_first(
+  from start: Int,
+  to end: Int,
+  so_that predicate: fn(Int) -> Bool,
+) -> Result(Int, Nil) {
+  case start < end {
+    True -> range_first_loop(start, end, 1, predicate)
+    False -> range_first_loop(start, end, -1, predicate)
+  }
+}
+
+fn range_first_loop(
+  current: Int,
+  end: Int,
+  delta: Int,
+  predicate: fn(Int) -> Bool,
+) -> Result(Int, Nil) {
+  case predicate(current) {
+    True -> Ok(current)
+    False if current == end -> Error(Nil)
+    False -> range_first_loop(current + delta, end, delta, predicate)
   }
 }

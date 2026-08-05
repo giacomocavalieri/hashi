@@ -366,13 +366,10 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       let model = Model(..model, grid:)
       let effect = effect.map(effect, GridProducedMessage)
       let other_effects = case message {
-        hashi_grid.UserMovedPointerOverGrid(..)
-        | hashi_grid.PointerEnteredIsland(..)
-        | hashi_grid.PointerMovedToPoint(..)
-        | hashi_grid.PointerLeftIsland -> []
+        hashi_grid.PointerMoved(..) -> []
 
         hashi_grid.UserPressedOnIsland(..)
-        | hashi_grid.UserStoppedPressing
+        | hashi_grid.UserStoppedPressing(..)
         | hashi_grid.UserClickedBridge(..) ->
           case hashi_grid.is_complete(model.grid) {
             True -> [save_state(model), send_outcome_to_server(model)]

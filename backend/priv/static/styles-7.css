@@ -144,6 +144,9 @@ button:disabled,
     &.double {
         pointer-events: bounding-box;
     }
+    &.current {
+        stroke: var(--faded-bridge-colour);
+    }
 }
 
 .hashi-island {
