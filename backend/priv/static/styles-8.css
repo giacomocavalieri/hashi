@@ -1,3 +1,7 @@
+/*
+We're using this lovely palette!
+https://lospec.com/palette-list/sunbleached-shoreline
+*/
 :root {
     --measure: 65ch;
     --ratio: 1.5;
@@ -19,8 +23,7 @@
 
     --background-colour: #d8f8f9;
     --island-colour: #f5d8bb;
-    --selected-island-colour: #f3bda4;
-    --selectable-hovered-island-colour: #f3bda4;
+    --selected-island-colour: #e9ab91;
     --disabled-island-colour: #c7d8ec;
 
     --complete-island-colour: #89af47;
@@ -161,7 +164,6 @@ button:disabled,
 
     &:hover {
         cursor: pointer;
-        fill: var(--selectable-hovered-island-colour);
     }
 
     &.selected {
@@ -194,6 +196,9 @@ button:disabled,
     -webkit-user-select: none;
 
     touch-action: none;
+    & * {
+        touch-action: none;
+    }
 
     max-inline-size: 40ch;
     inline-size: 80%;
