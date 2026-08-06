@@ -146,6 +146,7 @@ button:disabled,
     }
     &.current {
         stroke: var(--faded-bridge-colour);
+        stroke-dasharray: 4 2;
     }
 }
 
