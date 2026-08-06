@@ -81,6 +81,8 @@ button,
     color: var(--button-colour);
     cursor: pointer;
 
+    border-radius: var(--s-1);
+
     user-select: none;
     -webkit-user-select: none;
     touch-action: none;
