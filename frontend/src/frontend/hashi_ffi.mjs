@@ -2,6 +2,16 @@ export function read_app_json_data(id) {
   return document.getElementById(id)?.textContent ?? "";
 }
 
+export function do_island_under_pointer([x, y], on_enter, on_exit) {
+  const island = document.elementFromPoint(x, y)?.closest(".hashi-island");
+
+  if (island == null) {
+    on_exit();
+  } else {
+    on_enter([parseInt(island.dataset.x), parseInt(island.dataset.y)]);
+  }
+}
+
 export function do_after(milliseconds, run) {
   setTimeout(() => {
     run();

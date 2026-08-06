@@ -366,7 +366,9 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       let model = Model(..model, grid:)
       let effect = effect.map(effect, GridProducedMessage)
       let other_effects = case message {
-        hashi_grid.PointerMoved(..) -> []
+        hashi_grid.PointerMoved(..)
+        | hashi_grid.PointerEnteredIsland(..)
+        | hashi_grid.PointerLeftIsland -> []
 
         hashi_grid.UserPressedOnIsland(..)
         | hashi_grid.UserStoppedPressing(..)

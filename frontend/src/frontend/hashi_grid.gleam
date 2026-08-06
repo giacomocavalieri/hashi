@@ -266,12 +266,26 @@ pub type Message {
   UserStoppedPressing(pointer: #(Int, Int))
   UserClickedBridge(between: #(Int, Int), and: #(Int, Int))
   PointerMoved(pointer: #(Int, Int))
+  PointerEnteredIsland(island: #(Int, Int))
+  PointerLeftIsland
 }
 
 pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
   use <- skip_if_complete(model)
 
   case message {
+    PointerEnteredIsland(island:) -> {
+      let model = Model(..model, hovered_island: Some(island))
+      let effect = effect.none()
+      #(model, effect)
+    }
+
+    PointerLeftIsland -> {
+      let model = Model(..model, hovered_island: None)
+      let effect = effect.none()
+      #(model, effect)
+    }
+
     UserClickedBridge(between: one, and: other) -> {
       let model = remove_one_bridge(model, one, other)
       let effect = effect.none()
@@ -280,7 +294,7 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
 
     PointerMoved(pointer:) -> {
       let model = Model(..model, pointer:)
-      let effect = effect.none()
+      let effect = island_under_pointer(pointer)
       #(model, effect)
     }
 
@@ -314,6 +328,10 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
         // on the island. We keep that selected and wait for the user to click
         // on another island.
         Some(BridgeStart(point:, ..)) if point == end -> #(model, effect.none())
+        Some(BridgeStart(island:, ..)) if Some(island) == model.hovered_island -> {
+          #(Model(..model, bridge_start: None), effect.none())
+        }
+
         // Otherwise we've ended moving in some direction, we figure out which
         // direction we're moving to and see if we can connect to it.
         Some(BridgeStart(island:, point:)) -> {
@@ -428,6 +446,22 @@ fn skip_if_complete(
 
 // EFFECTS ---------------------------------------------------------------------
 
+fn island_under_pointer(cursor: #(Int, Int)) -> Effect(Message) {
+  use dispatch <- effect.from
+  do_island_under_pointer(
+    cursor,
+    on_island_enter: fn(island) { dispatch(PointerEnteredIsland(island)) },
+    on_island_exir: fn() { dispatch(PointerLeftIsland) },
+  )
+}
+
+@external(javascript, "./hashi_ffi.mjs", "do_island_under_pointer")
+fn do_island_under_pointer(
+  cursor: #(Int, Int),
+  on_island_enter on_island_enter: fn(#(Int, Int)) -> Nil,
+  on_island_exir on_island_exir: fn() -> Nil,
+) -> Nil
+
 // VIEW ------------------------------------------------------------------------
 
 const radius = 10
@@ -460,18 +494,18 @@ pub fn view(model: Model) -> Element(Message) {
   let current_bridge = case model.bridge_start {
     // If there's no start island selected then there's no bridge to be drawn.
     None -> element.none()
+    // If we're still over the island were we've put the finger down, then we
+    // don't draw the bridge. As long as we stay there no bridge will get drawn!
+    Some(BridgeStart(island: start, ..))
+      if Some(start) == model.hovered_island
+    -> element.none()
     // Otherwise we draw the bridge in the direction we're going.
     Some(BridgeStart(island: start, point:)) -> {
-      let squared_distance = {
-        let dx = point.0 - model.pointer.0
-        let dy = point.1 - model.pointer.1
-        dx * dx + dy * dy
-      }
       let direction = direction(point, model.pointer)
       case neighbour(model, start, direction) {
-        _ if squared_distance == 0 -> element.none()
+        _ if point == model.pointer -> element.none()
         Error(_) -> element.none()
-        Ok(end) -> {
+        Ok(end) ->
           case can_connect(model, start, end) {
             Error(_) -> element.none()
             Ok(_) -> {
@@ -482,7 +516,6 @@ pub fn view(model: Model) -> Element(Message) {
               ])
             }
           }
-        }
       }
     }
   }
@@ -670,6 +703,10 @@ fn view_island(model: Model, island: #(Int, Int)) -> Element(Message) {
             Ok(_) -> attribute.class("selectable")
           }
       }
+      let hovered = case model.hovered_island {
+        Some(hovered) if island == hovered -> attribute.class("selected")
+        Some(_) | None -> attribute.none()
+      }
 
       let status = case history.current(model.solutions).outcome {
         // There's at least one island with the wrong number of bridges, we
@@ -710,6 +747,7 @@ fn view_island(model: Model, island: #(Int, Int)) -> Element(Message) {
           }),
           status,
           selectable,
+          hovered,
         ],
         [
           svg.circle([
