@@ -31,6 +31,8 @@ pub opaque type Model {
     /// When drawing a bridge from one island to another, this contains the
     /// coordinates of the starting island.
     bridge_start: Option(BridgeStart),
+    /// The island the cursor is currently hovering over, if any.
+    hovered_island: Option(#(Int, Int)),
   )
 }
 
@@ -74,6 +76,7 @@ pub fn init(state: InitState) -> Model {
       pointer: #(0, 0),
       puzzle:,
       bridge_start: None,
+      hovered_island: None,
       solutions: history.new(
         Solution(outcome:, connections:, bridges: {
           use cells, start, connections <- dict.fold(connections, set.new())
@@ -261,8 +264,8 @@ pub fn delete_all_bridges(model: Model) -> Model {
 pub type Message {
   UserPressedOnIsland(island: #(Int, Int), pointer: #(Int, Int))
   UserStoppedPressing(pointer: #(Int, Int))
-  PointerMoved(pointer: #(Int, Int))
   UserClickedBridge(between: #(Int, Int), and: #(Int, Int))
+  PointerMoved(pointer: #(Int, Int))
 }
 
 pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
@@ -271,6 +274,12 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
   case message {
     UserClickedBridge(between: one, and: other) -> {
       let model = remove_one_bridge(model, one, other)
+      let effect = effect.none()
+      #(model, effect)
+    }
+
+    PointerMoved(pointer:) -> {
+      let model = Model(..model, pointer:)
       let effect = effect.none()
       #(model, effect)
     }
@@ -295,49 +304,29 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       }
     }
 
-    UserStoppedPressing(pointer:) -> {
-      let model = Model(..model, pointer:)
+    UserStoppedPressing(pointer: end) -> {
+      let model = Model(..model, pointer: end)
       case model.bridge_start {
-        None -> {
-          let model = Model(..model, bridge_start: None)
-          let effect = effect.none()
-          #(model, effect)
-        }
-
-        // If we stop start and stop pressing on the same island where we
-        // started that counts as a click. We select the island that has just
-        // been clicked as the start and wait for the destination to be clicked.
+        // If there's no starting bridge this doesn't make much sense to take
+        // care of, we just don't update anything.
+        None -> #(model, effect.none())
+        // If the movement ended exactly where we started, we've just clicked
+        // on the island. We keep that selected and wait for the user to click
+        // on another island.
+        Some(BridgeStart(point:, ..)) if point == end -> #(model, effect.none())
+        // Otherwise we've ended moving in some direction, we figure out which
+        // direction we're moving to and see if we can connect to it.
         Some(BridgeStart(island:, point:)) -> {
-          let squared_distance = {
-            let dx = model.pointer.0 - point.0
-            let dy = model.pointer.1 - point.1
-            dx * dx + dy * dy
-          }
-          case squared_distance == 0 {
-            True -> #(model, effect.none())
-            False -> {
-              let direction = direction(from: point, to: model.pointer)
-              case try_connect_in_direction(model, island, direction) {
-                Error(_) -> {
-                  let model = Model(..model, bridge_start: None)
-                  let effect = effect.none()
-                  #(model, effect)
-                }
-                Ok(model) -> {
-                  let effect = effect.none()
-                  #(model, effect)
-                }
-              }
+          let direction = direction(from: point, to: model.pointer)
+          case try_connect_in_direction(model, island, direction) {
+            Ok(model) -> #(model, effect.none())
+            Error(_) -> {
+              let model = Model(..model, bridge_start: None)
+              #(model, effect.none())
             }
           }
         }
       }
-    }
-
-    PointerMoved(pointer:) -> {
-      let model = Model(..model, pointer:)
-      let effect = effect.none()
-      #(model, effect)
     }
   }
 }
@@ -713,7 +702,8 @@ fn view_island(model: Model, island: #(Int, Int)) -> Element(Message) {
       svg.g(
         [
           attribute.class("hashi-island"),
-          attribute.class("hashi-island-hitbox"),
+          attribute.data("x", int.to_string(island.0)),
+          attribute.data("y", int.to_string(island.1)),
           event.on("pointerdown", {
             use pointer <- decode.then(pointer_event_decoder())
             decode.success(UserPressedOnIsland(island:, pointer:))
