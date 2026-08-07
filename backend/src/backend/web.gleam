@@ -56,7 +56,20 @@ pub fn layout(body: List(Element(_))) -> String {
         attribute.href("/static/favicon.svg"),
       ]),
     ]),
-    html.body([], body),
+    html.body([], [
+      element.fragment(body),
+      html.script(
+        [
+          attribute.attribute("async", ""),
+          attribute.src("//gc.zgo.at/count.js"),
+          attribute.attribute(
+            "data-goatcounter",
+            "https://hashi-giacomocavalieri.goatcounter.com/count",
+          ),
+        ],
+        "",
+      ),
+    ]),
   ])
   |> element.to_document_string
 }
