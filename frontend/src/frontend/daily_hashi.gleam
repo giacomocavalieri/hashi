@@ -9,7 +9,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/set.{type Set}
 import gleam/string
-import gleam/time/calendar.{type Date}
+import gleam/time/calendar.{type Date, Date}
 import gleam/time/duration.{type Duration}
 import gleam/time/timestamp.{type Timestamp}
 import lustre
@@ -73,8 +73,7 @@ fn load_saved_state() -> Result(SaveState, Nil) {
 
 pub type Model {
   Model(
-    /// Who we should send the outcome to once we're done
-    server_url: String,
+    play_mode: PlayMode,
     /// The day of the puzzle we're solving.
     puzzle_day: Date,
     /// If the user has recently shared their outcome, this will be set to
@@ -85,6 +84,15 @@ pub type Model {
     current_time: Timestamp,
     grid: hashi_grid.Model,
   )
+}
+
+pub type PlayMode {
+  DailyChallenge(
+    /// Who we should send the outcome to once we're done with the daily
+    /// challenge.
+    server_url: String,
+  )
+  Archive
 }
 
 pub type ShareMedium {
@@ -114,7 +122,7 @@ pub fn init(state: InitState) -> #(Model, Effect(Message)) {
 
 pub fn init_model(state: InitState) -> Model {
   let InitState(
-    server_url: server_url,
+    server_url:,
     puzzle:,
     puzzle_day:,
     connections:,
@@ -122,8 +130,13 @@ pub fn init_model(state: InitState) -> Model {
     current_time:,
   ) = state
 
+  let play_mode = case server_url {
+    Some(server_url) -> DailyChallenge(server_url:)
+    None -> Archive
+  }
+
   Model(
-    server_url:,
+    play_mode:,
     puzzle_day:,
     elapsed_time:,
     current_time:,
@@ -140,7 +153,7 @@ pub fn init_model(state: InitState) -> Model {
 
 pub type InitState {
   InitState(
-    server_url: String,
+    server_url: Option(String),
     puzzle_day: Date,
     puzzle: Puzzle,
     connections: Dict(#(Int, Int), Dict(#(Int, Int), Bridge)),
@@ -149,23 +162,27 @@ pub type InitState {
   )
 }
 
-pub fn daily_puzzle_to_json(day: Date, puzzle: Puzzle, server: String) -> Json {
+pub fn daily_puzzle_to_json(
+  day: Date,
+  puzzle: Puzzle,
+  server: Option(String),
+) -> Json {
   json.object([
     #("puzzle_day", date_to_json(day)),
     #("puzzle", hashi.to_json(puzzle)),
-    #("server", json.string(server)),
+    #("server", json.nullable(server, json.string)),
   ])
 }
 
-pub fn daily_puzzle_decoder() -> Decoder(#(Date, Puzzle, String)) {
+pub fn daily_puzzle_decoder() -> Decoder(#(Date, Puzzle, Option(String))) {
   use date <- decode.field("puzzle_day", date_decoder())
   use puzzle <- decode.field("puzzle", hashi.decoder())
-  use server <- decode.field("server", decode.string)
+  use server <- decode.field("server", decode.optional(decode.string))
   decode.success(#(date, puzzle, server))
 }
 
 fn date_to_json(day: Date) -> Json {
-  let calendar.Date(year:, month:, day:) = day
+  let Date(year:, month:, day:) = day
   json.preprocessed_array([
     json.int(year),
     json.int(calendar.month_to_int(month)),
@@ -183,7 +200,7 @@ fn date_decoder() -> Decoder(Date) {
     }
   })
   use day <- decode.field(2, decode.int)
-  decode.success(calendar.Date(year:, month:, day:))
+  decode.success(Date(year:, month:, day:))
 }
 
 // SAVE STATE ------------------------------------------------------------------
@@ -422,15 +439,29 @@ fn tick_timer() -> Effect(Message) {
 fn share_outcome(model: Model) -> Effect(Message) {
   use dispatch <- effect.from
 
+  let where_to_play = case model.play_mode {
+    DailyChallenge(server_url:) -> server_url
+    Archive -> {
+      let Date(year:, month:, day:) = model.puzzle_day
+
+      "https://hashi.giacomocavalieri.me/archive/"
+      <> int.to_string(year)
+      <> "-"
+      <> string.pad_start(
+        int.to_string(calendar.month_to_int(month)),
+        to: 2,
+        with: "0",
+      )
+      <> "-"
+      <> string.pad_start(int.to_string(day), to: 2, with: "0")
+    }
+  }
+
   let elapsed = pretty_elapsed_time(model)
   let title = "🏝️ Hashi - " <> pretty_date(model.puzzle_day)
   do_share(
     title:,
-    message: title
-      <> "\nSolved in "
-      <> elapsed
-      <> "\nPlay at "
-      <> model.server_url,
+    message: title <> "\nSolved in " <> elapsed <> "\nPlay at " <> where_to_play,
     on_share: fn(copied_to_clipboard) {
       case copied_to_clipboard {
         True -> dispatch(UserSharedOutcome(Clipboard))
@@ -454,16 +485,24 @@ const save_state_local_storage_key = "save"
 /// This save the current solution to localstore so that a game can be resumed
 /// upon loading the page.
 fn save_state(model: Model) -> Effect(Message) {
-  use _dispatch <- effect.from
+  case model.play_mode {
+    // If the puzzle is not a daily challenge, we don't save its state in the
+    // localstore!
+    Archive -> effect.none()
 
-  SaveState(
-    puzzle_day: model.puzzle_day,
-    connections: hashi_grid.current_solution(model.grid).connections,
-    elapsed_time: model.elapsed_time,
-  )
-  |> save_state_to_json
-  |> json.to_string
-  |> write_local_storage(save_state_local_storage_key, _)
+    DailyChallenge(..) -> {
+      use _dispatch <- effect.from
+
+      SaveState(
+        puzzle_day: model.puzzle_day,
+        connections: hashi_grid.current_solution(model.grid).connections,
+        elapsed_time: model.elapsed_time,
+      )
+      |> save_state_to_json
+      |> json.to_string
+      |> write_local_storage(save_state_local_storage_key, _)
+    }
+  }
 }
 
 @external(javascript, "./hashi_ffi.mjs", "write_local_storage")
@@ -473,19 +512,26 @@ fn write_local_storage(key: String, value: String) -> Nil
 fn read_local_storage(key: String) -> String
 
 fn send_outcome_to_server(model: Model) -> Effect(Message) {
-  let outcome =
-    Outcome(
-      day: model.puzzle_day,
-      seconds: model.elapsed_time
-        |> duration.to_seconds
-        |> float.round,
-    )
+  case model.play_mode {
+    // When playing archived puzzles we don't save their result (for now...)
+    Archive -> effect.none()
+    // Otherwise we want to save the result of a daily puzzle!
+    DailyChallenge(server_url) -> {
+      let outcome =
+        Outcome(
+          day: model.puzzle_day,
+          seconds: model.elapsed_time
+            |> duration.to_seconds
+            |> float.round,
+        )
 
-  rsvp.post(
-    model.server_url,
-    outcome_to_json(outcome),
-    rsvp.expect_ok_response(fn(_reply) { RsvpPostedOutcome }),
-  )
+      rsvp.post(
+        server_url,
+        outcome_to_json(outcome),
+        rsvp.expect_ok_response(fn(_reply) { RsvpPostedOutcome }),
+      )
+    }
+  }
 }
 
 // VIEW ------------------------------------------------------------------------
@@ -559,7 +605,11 @@ fn button_controls(model: Model) -> Element(Message) {
         html.button([attribute.class("share"), ..attributes], [html.text(text)])
       html.div([attribute.class("center stack-s")], [
         html.div([attribute.class("button-group")], [time, share]),
-        html.p([], [html.text(pretty_missing_time(model))]),
+        case model.play_mode {
+          Archive -> html.p([], [html.text("Well done!")])
+          DailyChallenge(..) ->
+            html.p([], [html.text(pretty_missing_time(model))])
+        },
       ])
     }
   }
@@ -601,7 +651,7 @@ fn pretty_elapsed_time(model: Model) -> String {
 }
 
 fn pretty_date(date: Date) -> String {
-  let calendar.Date(year:, month:, day:) = date
+  let Date(year:, month:, day:) = date
 
   let year =
     int.to_string(year)

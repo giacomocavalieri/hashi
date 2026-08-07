@@ -3,12 +3,10 @@ import backend/router
 import backend/web.{type Context}
 import envoy
 import filepath
-import frontend/daily_hashi as daily_hashi_app
-import gleam/dict
 import gleam/erlang/atom
 import gleam/erlang/process
 import gleam/int
-import gleam/json
+import gleam/option.{Some}
 import gleam/otp/actor
 import gleam/otp/static_supervisor
 import gleam/otp/supervision
@@ -16,8 +14,6 @@ import gleam/result
 import gleam/time/calendar.{type Date}
 import gleam/time/duration
 import gleam/time/timestamp
-import lustre/attribute
-import lustre/element/html
 import mist
 import shared/hashi
 import shared/schedule
@@ -113,12 +109,12 @@ fn daily_generator_spec(context: Context) {
 /// it will be generated using the options in that file. Otherwise it will be
 /// generated using the default options for the day.
 fn cache_puzzle(today: Date, context: Context) -> Nil {
-  let puzzle = generate_puzzle(today, context)
+  let puzzle = generate_and_save_options(today, context)
 
   // Finally, after generating the puzzle, we prerender the page we'll be
   // serving and save that in the cache. So from now on all requests to the
   // server will serve this new page!
-  let page = puzzle_to_page(today, puzzle, context.server_url)
+  let page = web.puzzle_page(today, puzzle, Some(context.server_url))
   daily_puzzle.replace_cached(context.cache, page)
   Nil
 }
@@ -128,7 +124,7 @@ fn cache_puzzle(today: Date, context: Context) -> Nil {
 /// the default puzzle's path where its options can be found.
 ///
 /// The option file is created if it doesn't exist!
-fn generate_puzzle(today: Date, context: Context) -> hashi.Puzzle {
+fn generate_and_save_options(today: Date, context: Context) -> hashi.Puzzle {
   let puzzle_path =
     filepath.join(context.puzzles_folder, daily_puzzle.file_name(for: today))
 
@@ -172,42 +168,4 @@ fn generate_puzzle(today: Date, context: Context) -> hashi.Puzzle {
       puzzle
     }
   }
-}
-
-fn puzzle_to_page(
-  puzzle_day: Date,
-  puzzle: hashi.Puzzle,
-  server_url: String,
-) -> String {
-  // We create an initial dummy state to prerender the grid so that we don't see
-  // the page flashing as the lustre app starts.
-  let initial_state =
-    daily_hashi_app.init_model(daily_hashi_app.InitState(
-      connections: dict.new(),
-      elapsed_time: duration.seconds(0),
-      current_time: timestamp.system_time(),
-      puzzle_day:,
-      puzzle:,
-      server_url:,
-    ))
-
-  web.layout([
-    html.div([attribute.id("app")], [
-      daily_hashi_app.view(initial_state),
-    ]),
-    html.script(
-      [attribute.type_("application/hashi"), attribute.id("app-data")],
-      daily_hashi_app.daily_puzzle_to_json(puzzle_day, puzzle, server_url)
-        |> json.to_string,
-    ),
-    // The lustre app bundled with the runtime that will take over the page
-    // and allow to interact with it!
-    html.script(
-      [
-        attribute.type_("module"),
-        attribute.src("/static/generated/daily_hashi.js"),
-      ],
-      "",
-    ),
-  ])
 }

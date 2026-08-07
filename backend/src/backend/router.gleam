@@ -6,8 +6,13 @@ import frontend/hashi_tutorial as hashi_tutorial_app
 import gleam/http.{Get, Post}
 import gleam/int
 import gleam/json
+import gleam/option.{None}
+import gleam/result
+import gleam/string
+import gleam/time/calendar
 import lustre/attribute
 import lustre/element/html
+import shared/hashi
 import simplifile
 import wisp.{type Request, type Response}
 
@@ -36,6 +41,9 @@ pub fn handle_request(req: Request, context: Context) -> Response {
     // The tutorial page.
     Get, ["tutorial"] -> tutorial()
 
+    // Try an old puzzle.
+    Get, ["archive", day] -> old_puzzle(day, context)
+
     // Someone posts here when they've completed the tutorial. We set the cookie
     // and send them to the daily puzzle page.
     Post, ["tutorial"] ->
@@ -46,6 +54,47 @@ pub fn handle_request(req: Request, context: Context) -> Response {
     _, _ ->
       wisp.not_found()
       |> wisp.html_body(web.not_found_page())
+  }
+}
+
+fn old_puzzle(day: String, context: Context) -> Response {
+  let result = {
+    use day <- result.try(parse_day(day))
+    use content <- result.try(
+      context.puzzles_folder
+      |> filepath.join(daily_puzzle.file_name(day))
+      |> simplifile.read
+      |> result.replace_error(Nil),
+    )
+    use options <- result.try(daily_puzzle.parse_options(content))
+    Ok(#(day, hashi.generate(options)))
+  }
+
+  case result {
+    Error(_) ->
+      wisp.not_found()
+      |> wisp.html_body(web.not_found_page())
+
+    Ok(#(day, puzzle)) ->
+      web.puzzle_page(day, puzzle, None)
+      |> wisp.html_response(200)
+  }
+}
+
+fn parse_day(string: String) -> Result(calendar.Date, Nil) {
+  case string.split(string, on: "-") {
+    [year, month, day] -> {
+      use year <- result.try(int.parse(year))
+      use month <- result.try(int.parse(month))
+      use month <- result.try(calendar.month_from_int(month))
+      use day <- result.try(int.parse(day))
+      let date = calendar.Date(year:, month:, day:)
+      case calendar.is_valid_date(date) {
+        True -> Ok(date)
+        False -> Error(Nil)
+      }
+    }
+    _ -> Error(Nil)
   }
 }
 

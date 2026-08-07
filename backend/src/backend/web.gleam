@@ -1,7 +1,15 @@
 import backend/daily_puzzle
+import frontend/daily_hashi as daily_hashi_app
+import gleam/dict
+import gleam/json
+import gleam/option.{type Option}
+import gleam/time/calendar.{type Date}
+import gleam/time/duration
+import gleam/time/timestamp
 import lustre/attribute
 import lustre/element.{type Element}
 import lustre/element/html
+import shared/hashi
 import wisp
 
 pub type Context {
@@ -138,5 +146,43 @@ fn internal_server_error_page() -> String {
         ],
       ),
     ]),
+  ])
+}
+
+pub fn puzzle_page(
+  puzzle_day: Date,
+  puzzle: hashi.Puzzle,
+  server_url: Option(String),
+) -> String {
+  // We create an initial dummy state to prerender the grid so that we don't see
+  // the page flashing as the lustre app starts.
+  let initial_state =
+    daily_hashi_app.init_model(daily_hashi_app.InitState(
+      connections: dict.new(),
+      elapsed_time: duration.seconds(0),
+      current_time: timestamp.system_time(),
+      puzzle_day:,
+      puzzle:,
+      server_url:,
+    ))
+
+  layout([
+    html.div([attribute.id("app")], [
+      daily_hashi_app.view(initial_state),
+    ]),
+    html.script(
+      [attribute.type_("application/hashi"), attribute.id("app-data")],
+      daily_hashi_app.daily_puzzle_to_json(puzzle_day, puzzle, server_url)
+        |> json.to_string,
+    ),
+    // The lustre app bundled with the runtime that will take over the page
+    // and allow to interact with it!
+    html.script(
+      [
+        attribute.type_("module"),
+        attribute.src("/static/generated/daily_hashi.js"),
+      ],
+      "",
+    ),
   ])
 }
