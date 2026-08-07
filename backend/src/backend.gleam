@@ -95,7 +95,7 @@ fn daily_generator_spec(context: Context) {
   |> actor.on_message(fn(me, _msg) {
     // First we get today's date and generate a puzzle.
     let today = schedule.today()
-    generate_puzzle(today, context)
+    cache_puzzle(today, context)
 
     // Then we figure out how long we have to sleep before waking up again.
     // We want to generate the puzzle at a fixed time of the next day!
@@ -109,16 +109,30 @@ fn daily_generator_spec(context: Context) {
   |> actor.start
 }
 
-fn generate_puzzle(today: Date, context: Context) -> Nil {
+/// This caches the puzzle for the given day, if the puzzle has a file already
+/// it will be generated using the options in that file. Otherwise it will be
+/// generated using the default options for the day.
+fn cache_puzzle(today: Date, context: Context) -> Nil {
+  let puzzle = generate_puzzle(today, context)
+
+  // Finally, after generating the puzzle, we prerender the page we'll be
+  // serving and save that in the cache. So from now on all requests to the
+  // server will serve this new page!
+  let page = puzzle_to_page(today, puzzle, context.server_url)
+  daily_puzzle.replace_cached(context.cache, page)
+  Nil
+}
+
+/// Given a date this generates a puzzle for the given day by either using the
+/// default options for the day, or reading the options that already exist at
+/// the default puzzle's path where its options can be found.
+///
+/// The option file is created if it doesn't exist!
+fn generate_puzzle(today: Date, context: Context) -> hashi.Puzzle {
   let puzzle_path =
     filepath.join(context.puzzles_folder, daily_puzzle.file_name(for: today))
 
-  // We turn today's date into a seed so that the puzzle for each day is unique!
-  // The seed is the number YYYYMMDD.
-  let seed =
-    today.year * 1000 + calendar.month_to_int(today.month) * 100 + today.day
-
-  let puzzle = case simplifile.read(puzzle_path) {
+  case simplifile.read(puzzle_path) {
     // We start by checking if a file for the puzzle already exists.
     // That can happen in two cases:
     //   1. the puzzle for today had already been generated, for some reason I
@@ -130,16 +144,25 @@ fn generate_puzzle(today: Date, context: Context) -> Nil {
     // Either way we generate it from those existing options!
     Ok(file_content) -> {
       let assert Ok(options) = daily_puzzle.parse_options(file_content)
-      let options = hashi.with_seed(options, seed)
       hashi.generate(options)
     }
 
     // On the other hand, if no puzzle file exists we just generate one from
     // scratch using a default set of parameters and save the file ourselves.
     Error(_) -> {
+      // We turn today's date into a seed so that the puzzle for each day is
+      // unique! The seed is the number YYYYMMDD.
+      let seed =
+        today.year
+        * 10_000
+        + calendar.month_to_int(today.month)
+        * 100
+        + today.day
+
       let options =
         daily_puzzle.default_options(for: today)
         |> hashi.with_seed(seed)
+
       let puzzle = hashi.generate(options)
 
       let assert Ok(_) =
@@ -149,13 +172,6 @@ fn generate_puzzle(today: Date, context: Context) -> Nil {
       puzzle
     }
   }
-
-  // Finally, after generating the puzzle, we prerender the page we'll be
-  // serving and save that in the cache. So from now on all requests to the
-  // server will serve this new page!
-  let page = puzzle_to_page(today, puzzle, context.server_url)
-  daily_puzzle.replace_cached(context.cache, page)
-  Nil
 }
 
 fn puzzle_to_page(

@@ -61,7 +61,8 @@ pub fn default_options(for today: Date) -> hashi.Options {
 /// generate such puzzle.
 pub fn parse_options(file_content: String) -> Result(hashi.Options, Nil) {
   case string.split(file_content, on: "\n") {
-    [width, height, islands, double_bridge_ratio, _times] -> {
+    [seed, width, height, islands, double_bridge_ratio, _times] -> {
+      use seed <- result.try(int.parse(seed))
       use width <- result.try(int.parse(width))
       use height <- result.try(int.parse(height))
       use islands <- result.try(int.parse(islands))
@@ -69,6 +70,7 @@ pub fn parse_options(file_content: String) -> Result(hashi.Options, Nil) {
 
       hashi.new(width:, height:, islands:)
       |> hashi.with_double_bridge_ratio(double_bridge_ratio)
+      |> hashi.with_seed(seed)
       |> Ok
     }
 
@@ -79,10 +81,17 @@ pub fn parse_options(file_content: String) -> Result(hashi.Options, Nil) {
 /// Given the options used to generate a daily puzzle, this turns them into a
 /// binary that can be written to the puzzle's file.
 pub fn serialise_options(options: hashi.Options) -> String {
-  let hashi.Options(double_bridge_ratio:, width:, height:, islands:, seed: _) =
-    options
+  let hashi.Options(
+    double_bridge_ratio:,
+    width:,
+    height:,
+    islands:,
+    initial_seed_number:,
+    seed: _,
+  ) = options
 
   [
+    int.to_string(initial_seed_number),
     int.to_string(width),
     int.to_string(height),
     int.to_string(islands),

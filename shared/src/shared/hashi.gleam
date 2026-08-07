@@ -23,8 +23,10 @@ pub fn new(
   height height: Int,
   islands islands: Int,
 ) -> Options {
+  let initial_seed_number = int.random(random.max_int)
   Options(
-    seed: random.new_seed(int.random(random.max_int)),
+    seed: random.new_seed(initial_seed_number),
+    initial_seed_number:,
     double_bridge_ratio: 0.5,
     width:,
     height:,
@@ -36,7 +38,7 @@ pub fn new(
 /// For a given seed the generated game will always be the same.
 ///
 pub fn with_seed(options: Options, seed: Int) -> Options {
-  Options(..options, seed: random.new_seed(seed))
+  Options(..options, seed: random.new_seed(seed), initial_seed_number: seed)
 }
 
 /// This sets the ratio of double bridges that will appear in the generated
@@ -81,6 +83,8 @@ pub type Options {
     height: Int,
     /// How many islands the puzzle can have.
     islands: Int,
+    /// The first number the seed is generated from.
+    initial_seed_number: Int,
     /// The seed to use to pseudo-randomly generate the puzzle, this is handy
     /// to be able to regenerate the same puzzle if needed.
     seed: random.Seed,
@@ -205,7 +209,8 @@ fn neighbours_with_island(puzzle: Puzzle, point: #(Int, Int)) -> Bool {
 ///
 pub fn generate(options: Options) -> Puzzle {
   // We start with a single island at a random position.
-  let Options(double_bridge_ratio:, width:, height:, islands:, seed:) = options
+  let Options(double_bridge_ratio:, width:, height:, islands:, seed:, ..) =
+    options
 
   let #(x, seed) = random.int(0, width - 1) |> random.step(seed)
   let #(y, seed) = random.int(0, height - 1) |> random.step(seed)
