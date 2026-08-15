@@ -141,12 +141,16 @@ fn remove_one_bridge(
     |> try_remove_one_bridge(from: one, to: other)
   let outcome = hashi.check(model.puzzle, connections)
 
-  let bridges = case Nil {
-    _ if x == other_x ->
+  let remaining_bridge =
+    dict.get(connections, one)
+    |> result.try(dict.get(_, other))
+
+  let bridges = case remaining_bridge {
+    Error(_) if x == other_x ->
       int.range(y, other_y, solution.bridges, fn(bridges, y) {
         set.delete(bridges, #(x, y))
       })
-    _ if y == other_y ->
+    Error(_) if y == other_y ->
       int.range(x, other_x, solution.bridges, fn(bridges, x) {
         set.delete(bridges, #(x, y))
       })
