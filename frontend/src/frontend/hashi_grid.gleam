@@ -308,14 +308,17 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       let model = Model(..model, pointer:)
       case model.bridge_start {
         Some(BridgeStart(island: start, ..)) -> {
-          let model = try_connect(model, start, island)
+          let model = case can_connect(model, start, island) {
+            Ok(_) -> try_connect(model, start, island)
+            Error(_) if island == start -> Model(..model, bridge_start: None)
+            Error(_) -> start_bridge_from_island(model, island, pointer)
+          }
           let effect = effect.none()
           #(model, effect)
         }
 
         None -> {
-          let bridge_start = Some(BridgeStart(island:, point: pointer))
-          let model = Model(..model, bridge_start:)
+          let model = start_bridge_from_island(model, island, pointer)
           let effect = effect.none()
           #(model, effect)
         }
@@ -351,6 +354,16 @@ pub fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       }
     }
   }
+}
+
+fn start_bridge_from_island(
+  model: Model,
+  island: #(Int, Int),
+  point: #(Int, Int),
+) -> Model {
+  let bridge_start = Some(BridgeStart(island:, point:))
+  let model = Model(..model, bridge_start:)
+  model
 }
 
 /// If there's an island that can be connected to the given one, going in the
@@ -433,7 +446,9 @@ fn try_connect(model: Model, start: #(Int, Int), end: #(Int, Int)) -> Model {
   let model = case can_connect(model, start, end) {
     Ok(Some(bridge)) -> connect_islands(model, start, end, bridge)
     Ok(None) -> remove_one_bridge(model, start, end)
-    Error(_) -> model
+    Error(_) -> {
+      model
+    }
   }
   Model(..model, bridge_start: None)
 }
