@@ -23,8 +23,9 @@ https://lospec.com/palette-list/sunbleached-shoreline
 
     --background-colour: #d8f8f9;
     --island-colour: #f5d8bb;
-    --selected-island-colour: #e9ab91;
+    --hovered-island-colour: #e9ab91;
     --disabled-island-colour: #c7d8ec;
+    --disabled-island-border-colour: #9590c7;
 
     --complete-island-colour: #89af47;
     --wrong-island-colour: #d85679;
@@ -169,7 +170,7 @@ button:disabled,
     }
 
     &.selected {
-        fill: var(--selected-island-colour);
+        fill: var(--hovered-island-colour);
     }
 
     &.wrong {
@@ -186,6 +187,13 @@ button:disabled,
 
     &.disabled {
         fill: var(--disabled-island-colour);
+
+        & > circle {
+            stroke: var(--disabled-island-border-colour);
+        }
+        & > text {
+            fill: var(--disabled-island-border-colour);
+        }
     }
 
     & > text {
