@@ -49,6 +49,76 @@ pub fn next_day(date: calendar.Date) -> calendar.Date {
   }
 }
 
+pub fn previous_day(date: calendar.Date) -> calendar.Date {
+  let calendar.Date(year:, month:, day:) = date
+  case day == 1 {
+    False -> calendar.Date(year:, month:, day: day - 1)
+    True ->
+      case month {
+        January ->
+          calendar.Date(
+            year: year - 1,
+            month: December,
+            day: last_day_of_month(December, year - 1),
+          )
+        February ->
+          calendar.Date(
+            year:,
+            month: January,
+            day: last_day_of_month(January, year),
+          )
+        March ->
+          calendar.Date(
+            year:,
+            month: February,
+            day: last_day_of_month(February, year),
+          )
+        April ->
+          calendar.Date(
+            year:,
+            month: March,
+            day: last_day_of_month(March, year),
+          )
+        May ->
+          calendar.Date(
+            year:,
+            month: April,
+            day: last_day_of_month(April, year),
+          )
+        June ->
+          calendar.Date(year:, month: May, day: last_day_of_month(May, year))
+        July ->
+          calendar.Date(year:, month: June, day: last_day_of_month(June, year))
+        August ->
+          calendar.Date(year:, month: July, day: last_day_of_month(July, year))
+        September ->
+          calendar.Date(
+            year:,
+            month: October,
+            day: last_day_of_month(August, year),
+          )
+        October ->
+          calendar.Date(
+            year:,
+            month: September,
+            day: last_day_of_month(September, year),
+          )
+        November ->
+          calendar.Date(
+            year:,
+            month: October,
+            day: last_day_of_month(October, year),
+          )
+        December ->
+          calendar.Date(
+            year: year + 1,
+            month: November,
+            day: last_day_of_month(November, year),
+          )
+      }
+  }
+}
+
 fn last_day_of_month(month: calendar.Month, year: Int) -> Int {
   case month {
     January | March | May | July | August | October | December -> 31
