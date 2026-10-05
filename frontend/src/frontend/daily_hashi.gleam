@@ -19,6 +19,7 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
 import rsvp
+import shared/calendar_extra
 import shared/hashi.{type Bridge, type InvalidSolution, type Puzzle}
 import shared/schedule
 
@@ -436,25 +437,27 @@ fn tick_timer() -> Effect(Message) {
   dispatch(TimerTicked(previous_tick:, current_time:))
 }
 
+fn date_to_archive_url(date: calendar.Date) {
+  let Date(year:, month:, day:) = date
+
+  "https://hashi.giacomocavalieri.me/archive/"
+  <> int.to_string(year)
+  <> "-"
+  <> string.pad_start(
+    int.to_string(calendar.month_to_int(month)),
+    to: 2,
+    with: "0",
+  )
+  <> "-"
+  <> string.pad_start(int.to_string(day), to: 2, with: "0")
+}
+
 fn share_outcome(model: Model) -> Effect(Message) {
   use dispatch <- effect.from
 
   let where_to_play = case model.play_mode {
     DailyChallenge(server_url:) -> server_url
-    Archive -> {
-      let Date(year:, month:, day:) = model.puzzle_day
-
-      "https://hashi.giacomocavalieri.me/archive/"
-      <> int.to_string(year)
-      <> "-"
-      <> string.pad_start(
-        int.to_string(calendar.month_to_int(month)),
-        to: 2,
-        with: "0",
-      )
-      <> "-"
-      <> string.pad_start(int.to_string(day), to: 2, with: "0")
-    }
+    Archive -> date_to_archive_url(model.puzzle_day)
   }
 
   let elapsed = pretty_elapsed_time(model)
@@ -559,60 +562,98 @@ pub fn view(model: Model) -> Element(Message) {
 
 fn button_controls(model: Model) -> Element(Message) {
   let time = html.p([], [html.text(pretty_elapsed_time(model))])
-  case hashi_grid.is_complete(model.grid) {
-    False -> {
-      let undo =
-        html.button(
-          [
-            event.on_click(UserClickedUndo),
-            attribute.disabled(!hashi_grid.can_step_back(model.grid)),
-          ],
-          [html.text("undo")],
-        )
-      let redo =
-        html.button(
-          [
-            event.on_click(UserClickedRedo),
-            attribute.disabled(!hashi_grid.can_step_forward(model.grid)),
-          ],
-          [html.text("redo")],
-        )
-      let delete_all_bridges =
-        html.button(
-          [
-            event.on_click(UserClickedDeleteAllBridges),
-            attribute.disabled(!hashi_grid.has_bridges(model.grid)),
-          ],
-          [html.text("Delete all bridges")],
-        )
+  [
+    case hashi_grid.is_complete(model.grid) {
+      False -> {
+        let undo =
+          html.button(
+            [
+              event.on_click(UserClickedUndo),
+              attribute.disabled(!hashi_grid.can_step_back(model.grid)),
+            ],
+            [html.text("undo")],
+          )
+        let redo =
+          html.button(
+            [
+              event.on_click(UserClickedRedo),
+              attribute.disabled(!hashi_grid.can_step_forward(model.grid)),
+            ],
+            [html.text("redo")],
+          )
+        let delete_all_bridges =
+          html.button(
+            [
+              event.on_click(UserClickedDeleteAllBridges),
+              attribute.disabled(!hashi_grid.has_bridges(model.grid)),
+            ],
+            [html.text("Delete all bridges")],
+          )
 
-      html.div([attribute.class("center stack-s")], [
-        html.div([attribute.class("button-group")], [
-          undo,
-          time,
-          redo,
-        ]),
-        delete_all_bridges,
-      ])
-    }
-    True -> {
-      let #(attributes, text) = case model.share {
-        Some(Clipboard) -> #([attribute.class("success")], "copied!")
-        Some(RichShare) -> #([attribute.class("success")], "shared!")
-        None -> #([event.on_click(UserClickedShare)], "Share")
+        html.div([attribute.class("center stack-s")], [
+          html.div([attribute.class("button-group")], [
+            undo,
+            time,
+            redo,
+          ]),
+          delete_all_bridges,
+        ])
       }
-      let share =
-        html.button([attribute.class("share"), ..attributes], [html.text(text)])
-      html.div([attribute.class("center stack-s")], [
-        html.div([attribute.class("button-group")], [time, share]),
-        case model.play_mode {
-          Archive -> html.p([], [html.text("Well done!")])
-          DailyChallenge(..) ->
-            html.p([], [html.text(pretty_missing_time(model))])
-        },
-      ])
-    }
-  }
+      True -> {
+        let #(attributes, text) = case model.share {
+          Some(Clipboard) -> #([attribute.class("success")], "copied!")
+          Some(RichShare) -> #([attribute.class("success")], "shared!")
+          None -> #([event.on_click(UserClickedShare)], "Share")
+        }
+        let share =
+          html.button([attribute.class("share"), ..attributes], [
+            html.text(text),
+          ])
+        html.div([attribute.class("center stack-s")], [
+          html.div([attribute.class("button-group")], [time, share]),
+          case model.play_mode {
+            Archive -> html.p([], [html.text("Well done!")])
+            DailyChallenge(..) ->
+              html.p([], [html.text(pretty_missing_time(model))])
+          },
+        ])
+      }
+    },
+    case model.play_mode == Archive {
+      False -> element.none()
+      True -> {
+        html.div([attribute.class("center stack-s")], [
+          html.div([attribute.class("button-group")], [
+            html.a(
+              [
+                attribute.href(date_to_archive_url(
+                  model.puzzle_day |> calendar_extra.previous_day,
+                )),
+              ],
+              [
+                html.button([], [
+                  html.text("Previous"),
+                ]),
+              ],
+            ),
+            html.a(
+              [
+                attribute.href(date_to_archive_url(
+                  model.puzzle_day |> calendar_extra.next_day,
+                )),
+              ],
+              [
+                html.button([], [
+                  html.text("Next"),
+                ]),
+              ],
+            ),
+          ]),
+        ])
+      }
+    },
+  ]
+  |> element.fragment()
 }
 
 fn pretty_missing_time(model: Model) -> String {
