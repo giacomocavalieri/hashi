@@ -480,7 +480,8 @@ fn outcome_message(model: Model) -> #(String, String) {
 
   let elapsed = pretty_elapsed_time(model)
   let title = "🏝️ Hashi - " <> pretty_date(model.puzzle_day)
-  let message = title <> "\nSolved in " <> elapsed <> "\nPlay at " <> where_to_play
+  let message =
+    title <> "\nSolved in " <> elapsed <> "\nPlay at " <> where_to_play
 
   #(title, message)
 }
@@ -489,32 +490,22 @@ fn copy_outcome(model: Model) -> Effect(Message) {
   use dispatch <- effect.from
 
   let #(_, message) = outcome_message(model)
-  do_copy(
-    message:,
-    on_share: fn() { dispatch(UserCopiedOutcome) },
-  )
+  do_copy(message:, on_share: fn() { dispatch(UserCopiedOutcome) })
 }
 
 @external(javascript, "./hashi_ffi.mjs", "do_copy")
-fn do_copy(
-  message message: String,
-  on_share run: fn() -> Nil,
-) -> Nil
+fn do_copy(message message: String, on_share run: fn() -> Nil) -> Nil
 
 fn share_outcome(model: Model) -> Effect(Message) {
   use dispatch <- effect.from
 
   let #(title, message) = outcome_message(model)
-  do_share(
-    title:,
-    message:,
-    on_share: fn(copied_to_clipboard) {
-      case copied_to_clipboard {
-        True -> dispatch(UserSharedOutcome(Clipboard))
-        False -> dispatch(UserSharedOutcome(RichShare))
-      }
-    },
-  )
+  do_share(title:, message:, on_share: fn(copied_to_clipboard) {
+    case copied_to_clipboard {
+      True -> dispatch(UserSharedOutcome(Clipboard))
+      False -> dispatch(UserSharedOutcome(RichShare))
+    }
+  })
 }
 
 @external(javascript, "./hashi_ffi.mjs", "do_share")
@@ -652,9 +643,13 @@ fn button_controls(model: Model) -> Element(Message) {
         None -> #([event.on_click(UserClickedShare)], "Share")
       }
       let copy =
-        html.button([attribute.class("share"), ..copy_attributes], [html.text(copy_text)])
+        html.button([attribute.class("share"), ..copy_attributes], [
+          html.text(copy_text),
+        ])
       let share =
-        html.button([attribute.class("share"), ..share_attributes], [html.text(share_text)])
+        html.button([attribute.class("share"), ..share_attributes], [
+          html.text(share_text),
+        ])
       html.div([attribute.class("center stack-s")], [
         time,
         html.div([attribute.class("button-group")], [copy, share]),
