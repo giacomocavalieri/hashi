@@ -76,6 +76,9 @@ pub type Model {
     play_mode: PlayMode,
     /// The day of the puzzle we're solving.
     puzzle_day: Date,
+    /// If the user has recently copied their outcome, this will be set to
+    /// `True`.
+    copied: Bool,
     /// If the user has recently shared their outcome, this will be set to
     /// `Some` with the medium with which the outcome was shared.
     share: Option(ShareMedium),
@@ -140,6 +143,7 @@ pub fn init_model(state: InitState) -> Model {
     puzzle_day:,
     elapsed_time:,
     current_time:,
+    copied: False,
     share: None,
     grid: hashi_grid.init(hashi_grid.InitState(puzzle:, connections:)),
   )
@@ -306,6 +310,10 @@ pub type Message {
   UserClickedUndo
   UserClickedRedo
 
+  UserClickedCopy
+  UserCopiedOutcome
+  CopyTimerExpired
+
   UserClickedShare
   UserSharedOutcome(medium: ShareMedium)
   ShareTimerExpired
@@ -342,6 +350,21 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
           #(model, effect)
         }
       }
+
+    UserClickedCopy -> {
+      let effect = copy_outcome(model)
+      #(model, effect)
+    }
+    UserCopiedOutcome -> {
+      let model = Model(..model, copied: True)
+      let effect = after(1000, fn() { CopyTimerExpired })
+      #(model, effect)
+    }
+    CopyTimerExpired -> {
+      let model = Model(..model, copied: False)
+      let effect = effect.none()
+      #(model, effect)
+    }
 
     UserClickedShare -> {
       let effect = share_outcome(model)
@@ -436,9 +459,7 @@ fn tick_timer() -> Effect(Message) {
   dispatch(TimerTicked(previous_tick:, current_time:))
 }
 
-fn share_outcome(model: Model) -> Effect(Message) {
-  use dispatch <- effect.from
-
+fn outcome_message(model: Model) -> #(String, String) {
   let where_to_play = case model.play_mode {
     DailyChallenge(server_url:) -> server_url
     Archive -> {
@@ -459,9 +480,34 @@ fn share_outcome(model: Model) -> Effect(Message) {
 
   let elapsed = pretty_elapsed_time(model)
   let title = "🏝️ Hashi - " <> pretty_date(model.puzzle_day)
+  let message = title <> "\nSolved in " <> elapsed <> "\nPlay at " <> where_to_play
+
+  #(title, message)
+}
+
+fn copy_outcome(model: Model) -> Effect(Message) {
+  use dispatch <- effect.from
+
+  let #(_, message) = outcome_message(model)
+  do_copy(
+    message:,
+    on_share: fn() { dispatch(UserCopiedOutcome) },
+  )
+}
+
+@external(javascript, "./hashi_ffi.mjs", "do_copy")
+fn do_copy(
+  message message: String,
+  on_share run: fn() -> Nil,
+) -> Nil
+
+fn share_outcome(model: Model) -> Effect(Message) {
+  use dispatch <- effect.from
+
+  let #(title, message) = outcome_message(model)
   do_share(
     title:,
-    message: title <> "\nSolved in " <> elapsed <> "\nPlay at " <> where_to_play,
+    message:,
     on_share: fn(copied_to_clipboard) {
       case copied_to_clipboard {
         True -> dispatch(UserSharedOutcome(Clipboard))
@@ -596,15 +642,22 @@ fn button_controls(model: Model) -> Element(Message) {
       ])
     }
     True -> {
-      let #(attributes, text) = case model.share {
+      let #(copy_attributes, copy_text) = case model.copied {
+        True -> #([attribute.class("success")], "copied!")
+        False -> #([event.on_click(UserClickedCopy)], "Copy")
+      }
+      let #(share_attributes, share_text) = case model.share {
         Some(Clipboard) -> #([attribute.class("success")], "copied!")
         Some(RichShare) -> #([attribute.class("success")], "shared!")
         None -> #([event.on_click(UserClickedShare)], "Share")
       }
+      let copy =
+        html.button([attribute.class("share"), ..copy_attributes], [html.text(copy_text)])
       let share =
-        html.button([attribute.class("share"), ..attributes], [html.text(text)])
+        html.button([attribute.class("share"), ..share_attributes], [html.text(share_text)])
       html.div([attribute.class("center stack-s")], [
-        html.div([attribute.class("button-group")], [time, share]),
+        time,
+        html.div([attribute.class("button-group")], [copy, share]),
         case model.play_mode {
           Archive -> html.p([], [html.text("Well done!")])
           DailyChallenge(..) ->

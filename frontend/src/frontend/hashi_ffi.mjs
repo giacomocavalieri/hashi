@@ -1,5 +1,5 @@
 export function read_app_json_data(id) {
-  return document.getElementById(id)?.textContent ?? "";
+return document.getElementById(id)?.textContent ?? "";
 }
 
 export function do_island_under_pointer([x, y], on_enter, on_exit) {
@@ -18,6 +18,15 @@ export function do_after(milliseconds, run) {
   }, milliseconds);
 
   return undefined;
+}
+
+export async function do_copy(message, on_copied) {
+  try {
+    await navigator.clipboard.writeText(message);
+    on_copied(true);
+  } catch (exception) {
+    console.log(exception);
+  }
 }
 
 export async function do_share(title, message, on_shared) {
