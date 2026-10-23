@@ -89,16 +89,23 @@ fn daily_generator_spec(context: Context) {
     Ok(actor.initialised(me))
   })
   |> actor.on_message(fn(me, _msg) {
+    wisp.log_debug("Woke up, generating new puzzle")
+
     // First we get today's date and generate a puzzle.
     let today = schedule.today()
     cache_puzzle(today, context)
 
     // Then we figure out how long we have to sleep before waking up again.
     // We want to generate the puzzle at a fixed time of the next day!
-    schedule.next_puzzle_time(today)
-    |> timestamp.difference(timestamp.system_time(), _)
-    |> duration.to_milliseconds
-    |> process.send_after(me, _, Nil)
+    let ms =
+      schedule.next_puzzle_time(today)
+      |> timestamp.difference(timestamp.system_time(), _)
+      |> duration.to_milliseconds
+
+    wisp.log_debug(
+      "Waking up and generating new puzzle in: " <> int.to_string(ms) <> "ms",
+    )
+    process.send_after(me, ms, Nil)
 
     actor.continue(me)
   })
